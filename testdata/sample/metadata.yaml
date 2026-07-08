@@ -1,0 +1,9 @@
+title: "Sample Manuscript"
+author: "Alice and Bob"
+date: "2026-07-08"
+bibliography: "references.bib"
+numbersections: true
+
+wordlimit: 500
+acronyms:
+  API: "Application Programming Interface"

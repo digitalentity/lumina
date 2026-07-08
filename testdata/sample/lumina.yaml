@@ -1,0 +1,8 @@
+runner: docker
+tools-image: lumina-tools:latest
+pdf-engine: xelatex
+formats:
+  - pdf
+  - docx
+  - tex
+  - zip
