@@ -15,6 +15,7 @@ import (
 	gtext "github.com/yuin/goldmark/text"
 
 	lbibtex "lumina/internal/bibtex"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 )
 
@@ -35,6 +36,23 @@ type Result struct {
 type Warning struct {
 	Kind    string // "duplicate-key"|"duplicate-doi"|"duplicate-title"|"missing-field"
 	Message string
+}
+
+// Report prints bibliography warnings and missing citations with colorful,
+// informative logging. Returns false if the result contains a fatal
+// (missing-citation) failure, true otherwise.
+func (r Result) Report() bool {
+	for _, w := range r.Warnings {
+		logx.Warn("[%s] %s", w.Kind, w.Message)
+	}
+	if len(r.Missing) == 0 {
+		return true
+	}
+	logx.Error("missing citations:")
+	for _, m := range r.Missing {
+		logx.Error("  @%s is cited but not defined in references.bib", m)
+	}
+	return false
 }
 
 // IsCrossRef reports whether key is a cross-reference (not a bib citation).

@@ -1,9 +1,8 @@
 package text
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 )
@@ -21,13 +20,12 @@ var fmtCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println("Formatting manuscript.md...")
-		err = ms.Runner.Run("prettier", []string{"--write", "manuscript.md"}, ms.Root)
-		if err != nil {
+		logx.Step("formatting manuscript.md...")
+		if err := ms.Runner.Run("prettier", []string{"--write", "manuscript.md"}, ms.Root); err != nil {
 			return err
 		}
 
-		fmt.Println("Formatted manuscript.md successfully.")
+		logx.Success("formatted manuscript.md")
 		return nil
 	},
 }

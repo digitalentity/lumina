@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 )
 
@@ -20,12 +21,12 @@ var cleanCmd = &cobra.Command{
 		if err := os.RemoveAll(ms.LuminaDir); err != nil {
 			return fmt.Errorf("failed to remove .lumina: %w", err)
 		}
-		fmt.Printf("Removed %s\n", ms.LuminaDir)
+		logx.Success("removed %s", ms.LuminaDir)
 
 		if err := os.RemoveAll(ms.BuildDir); err != nil {
 			return fmt.Errorf("failed to remove _build: %w", err)
 		}
-		fmt.Printf("Removed %s\n", ms.BuildDir)
+		logx.Success("removed %s", ms.BuildDir)
 
 		return nil
 	},

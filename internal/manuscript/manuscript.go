@@ -22,6 +22,7 @@ type Manuscript struct {
 	Stem      string
 	Config    config.Config
 	Meta      config.LuminaMetadata
+	RawMeta   map[string]any // metadata.yaml with lumina-specific keys stripped, ready for pandoc
 	Runner    runner.Runner
 }
 
@@ -47,7 +48,7 @@ func Load() (*Manuscript, error) {
 		return nil, err
 	}
 
-	meta, _, err := config.LoadMetadata(root)
+	meta, rawMeta, err := config.LoadMetadata(root)
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +63,7 @@ func Load() (*Manuscript, error) {
 		Stem:      "manuscript",
 		Config:    cfg,
 		Meta:      meta,
+		RawMeta:   rawMeta,
 		Runner:    run,
 	}, nil
 }

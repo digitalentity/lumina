@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 )
@@ -21,14 +22,18 @@ var zipCmd = &cobra.Command{
 		}
 
 		// 1. Ensure TeX source is generated and up to date
-		texPath := ms.BuildPath("tex")
-		if _, err := os.Stat(texPath); os.IsNotExist(err) || forceFlag {
+		stale, err := texIsStale(ms)
+		if err != nil {
+			return err
+		}
+		if stale || forceFlag {
 			if err := texCmd.RunE(cmd, args); err != nil {
 				return err
 			}
 		}
 
 		// 2. Stage manuscript.tex inside .lumina/
+		texPath := ms.BuildPath("tex")
 		destTex := filepath.Join(ms.LuminaDir, "manuscript.tex")
 		if err := copyFile(texPath, destTex); err != nil {
 			return fmt.Errorf("failed to stage TeX file: %w", err)
@@ -59,15 +64,33 @@ var zipCmd = &cobra.Command{
 			"figures",
 		}
 
-		// Run zip tool from inside the .lumina directory
-		err = ms.Runner.Run("zip", zipArgs, ms.LuminaDir)
-		if err != nil {
+		logx.Step("assembling ZIP submission archive...")
+		if err := ms.Runner.Run("zip", zipArgs, ms.LuminaDir); err != nil {
 			return err
 		}
 
-		fmt.Printf("ZIP submission archive created: %s\n", ms.BuildPath("zip"))
+		logx.Success("ZIP submission archive created: %s", zipOut)
 		return nil
 	},
+}
+
+// texIsStale reports whether _build/manuscript.tex needs to be regenerated,
+// i.e. it is absent or older than manuscript.md.
+func texIsStale(ms *manuscript.Manuscript) (bool, error) {
+	texStat, err := os.Stat(ms.BuildPath("tex"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	srcStat, err := os.Stat(ms.Source)
+	if err != nil {
+		return false, err
+	}
+
+	return srcStat.ModTime().After(texStat.ModTime()), nil
 }
 
 func copyFile(src, dest string) error {

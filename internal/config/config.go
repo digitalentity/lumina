@@ -18,8 +18,7 @@ type Config struct {
 
 // LuminaMetadata contains custom metadata processed by lumina itself.
 type LuminaMetadata struct {
-	WordLimit int               `yaml:"wordlimit"`
-	Acronyms  map[string]string `yaml:"acronyms"`
+	WordLimit int `yaml:"wordlimit"`
 }
 
 // LoadConfig reads lumina.yaml from root. If file doesn't exist, returns default Config.
@@ -67,17 +66,20 @@ func LoadConfig(root string) (Config, error) {
 	return cfg, nil
 }
 
-// LoadMetadata parses metadata.yaml, extracts Lumina-specific fields,
-// and returns the extracted LuminaMetadata and a map of the remaining
-// pandoc-safe metadata.
+// LoadMetadata parses metadata.yaml, extracts Lumina-specific fields, and
+// returns the extracted LuminaMetadata and a map of the remaining metadata
+// destined for pandoc.
+//
+// acronyms is not a Lumina-specific key: it is consumed by the pandoc-acro
+// filter at build time, not by lumina itself. Lumina only reshapes it from
+// the author-facing `KEY: "definition"` form into pandoc-acro's
+// `KEY: {short: KEY, long: "definition"}` schema before forwarding it.
 func LoadMetadata(root string) (LuminaMetadata, map[string]any, error) {
 	path := root + "/metadata.yaml"
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return LuminaMetadata{
-				Acronyms: map[string]string{},
-			}, map[string]any{}, nil
+			return LuminaMetadata{}, map[string]any{}, nil
 		}
 		return LuminaMetadata{}, nil, err
 	}
@@ -87,35 +89,61 @@ func LoadMetadata(root string) (LuminaMetadata, map[string]any, error) {
 	dec := yaml.NewDecoder(file)
 	if err := dec.Decode(&raw); err != nil {
 		if err == io.EOF {
-			return LuminaMetadata{
-				Acronyms: map[string]string{},
-			}, map[string]any{}, nil
+			return LuminaMetadata{}, map[string]any{}, nil
 		}
 		return LuminaMetadata{}, nil, err
 	}
 
 	var meta LuminaMetadata
-	meta.Acronyms = map[string]string{}
 
-	// Extract and parse wordlimit if present
+	// Extract and parse wordlimit if present.
 	if val, ok := raw["wordlimit"]; ok {
-		if limit, ok := val.(int); ok {
+		if limit, ok := asInt(val); ok {
 			meta.WordLimit = limit
 		}
 		delete(raw, "wordlimit")
 	}
 
-	// Extract and parse acronyms if present
+	// Reshape acronyms for pandoc-acro, if present. Left as-is if it
+	// doesn't match the expected `KEY: "definition"` shape.
 	if val, ok := raw["acronyms"]; ok {
 		if acrMap, ok := val.(map[string]any); ok {
-			for k, v := range acrMap {
-				if strVal, ok := v.(string); ok {
-					meta.Acronyms[k] = strVal
-				}
-			}
+			raw["acronyms"] = acroSchema(acrMap)
 		}
-		delete(raw, "acronyms")
 	}
 
 	return meta, raw, nil
+}
+
+// acroSchema converts a `KEY: "definition"` map into pandoc-acro's expected
+// `KEY: {short: KEY, long: "definition"}` schema. Entries already in map
+// form (e.g. hand-written with short/long/plural fields) pass through
+// unchanged.
+func acroSchema(acrMap map[string]any) map[string]any {
+	out := make(map[string]any, len(acrMap))
+	for k, v := range acrMap {
+		if definition, ok := v.(string); ok {
+			out[k] = map[string]any{"short": k, "long": definition}
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// asInt converts a YAML-decoded numeric scalar to int. yaml.v3 decodes
+// plain integers into interface{} as int, but falls back to int64 or
+// uint64 for values that don't fit in int on some platforms, so all three
+// need to be handled.
+func asInt(val any) (int, bool) {
+	switch v := val.(type) {
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	default:
+		return 0, false
+	}
 }

@@ -10,7 +10,7 @@ import (
 	"sort"
 
 	"gopkg.in/yaml.v3"
-	"lumina/internal/config"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 )
 
@@ -19,7 +19,14 @@ type Options struct {
 	Force bool // re-render all Mermaid PNGs, ignoring cache
 }
 
-// Run preprocesses the manuscript: acronym expansion, Mermaid rendering, and file staging.
+// replacement describes a byte-range in the source manuscript to substitute
+// with text, e.g. a Mermaid code block replaced with an image link.
+type replacement struct {
+	start, end int
+	text       string
+}
+
+// Run preprocesses the manuscript: Mermaid rendering and file staging.
 func Run(ms *manuscript.Manuscript, opts Options) error {
 	stale, err := IsStale(ms)
 	if err != nil && !os.IsNotExist(err) {
@@ -51,20 +58,18 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	for _, mmd := range mmds {
 		_, statErr := os.Stat(mmd.path)
 		if os.IsNotExist(statErr) || opts.Force {
+			logx.Step("rendering Mermaid diagram %s...", filepath.Base(mmd.path))
 			if err := RenderMermaid(ms.Runner, mmd.code, mmd.path, ms.LuminaDir); err != nil {
 				return fmt.Errorf("failed to render Mermaid diagram: %w", err)
 			}
+		} else {
+			logx.Info("Mermaid diagram %s unchanged, using cache", filepath.Base(mmd.path))
 		}
 	}
 
-	// 5. Expand Acronyms
-	// Reload metadata to get latest acronyms
-	_, rawMeta, err := config.LoadMetadata(ms.Root)
-	if err != nil {
-		return err
-	}
-	acroReplacements := ExpandAcronyms(content, ms.Meta.Acronyms)
-	replacements = append(replacements, acroReplacements...)
+	// Acronym expansion (+KEY) is handled by the pandoc-acro filter at
+	// build time, using the acronyms map forwarded in metadata.yaml — not
+	// by lumina itself. See internal/config.LoadMetadata.
 
 	// Sort all replacements by start offset
 	sort.Slice(replacements, func(i, j int) bool {
@@ -92,7 +97,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	}
 
 	// 6. Write clean metadata.yaml to .lumina/metadata.yaml
-	metaContent, err := yaml.Marshal(rawMeta)
+	metaContent, err := yaml.Marshal(ms.RawMeta)
 	if err != nil {
 		return fmt.Errorf("failed to marshal clean metadata: %w", err)
 	}
@@ -124,6 +129,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		}
 	}
 
+	logx.Success("preprocessed manuscript written to %s", ms.IntermediateSource())
 	return nil
 }
 
@@ -152,6 +158,14 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	metaStat, err := os.Stat(filepath.Join(ms.Root, "metadata.yaml"))
 	if err == nil {
 		if metaStat.ModTime().After(destTime) {
+			return true, nil
+		}
+	}
+
+	// Check references.bib
+	bibStat, err := os.Stat(filepath.Join(ms.Root, "references.bib"))
+	if err == nil {
+		if bibStat.ModTime().After(destTime) {
 			return true, nil
 		}
 	}

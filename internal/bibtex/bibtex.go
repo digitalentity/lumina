@@ -47,6 +47,22 @@ func ParseBibRaw(content string) (*bibtex.BibTex, error) {
 	return bibtex.Parse(strings.NewReader(content))
 }
 
+// RemovedEntries returns the subset of entries whose Key is not present in cited.
+func RemovedEntries(entries []Entry, cited []string) []Entry {
+	citedMap := make(map[string]bool, len(cited))
+	for _, c := range cited {
+		citedMap[c] = true
+	}
+
+	var removed []Entry
+	for _, e := range entries {
+		if !citedMap[e.Key] {
+			removed = append(removed, e)
+		}
+	}
+	return removed
+}
+
 // Prune rewrites path, keeping only entries whose Key appears in cited.
 func Prune(path string, cited []string) (int, error) {
 	content, err := os.ReadFile(path)

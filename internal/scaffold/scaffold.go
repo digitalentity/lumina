@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"lumina/internal/logx"
 )
 
 //go:embed templates/*
@@ -72,6 +74,6 @@ func writeIfAbsent(path string, content []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", filepath.Base(path), err)
 	}
-	fmt.Printf("Created %s\n", filepath.Base(path))
+	logx.Success("created %s", filepath.Base(path))
 	return nil
 }

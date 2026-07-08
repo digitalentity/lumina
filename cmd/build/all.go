@@ -2,10 +2,10 @@ package build
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/citations"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/preprocess"
 )
@@ -19,22 +19,22 @@ var allCmd = &cobra.Command{
 			return err
 		}
 
+		logx.Section("Build all")
+
 		// 1. Check citations first
+		logx.Step("checking citation integrity...")
 		res, err := citations.Check(ms)
 		if err != nil {
 			return err
 		}
-		if len(res.Missing) > 0 {
-			fmt.Fprintln(os.Stderr, "Error: Missing citations:")
-			for _, m := range res.Missing {
-				fmt.Fprintf(os.Stderr, "  @%s is cited but not defined in references.bib\n", m)
-			}
-			os.Exit(1)
+		if !res.Report() {
+			return fmt.Errorf("citation check failed: %d missing citation(s)", len(res.Missing))
 		}
+		logx.Success("citation check passed")
 
 		// 2. Preprocess
-		err = preprocess.Run(ms, preprocess.Options{Force: forceFlag})
-		if err != nil {
+		logx.Step("preprocessing manuscript...")
+		if err := preprocess.Run(ms, preprocess.Options{Force: forceFlag}); err != nil {
 			return err
 		}
 
@@ -57,9 +57,12 @@ var allCmd = &cobra.Command{
 				if err := zipCmd.RunE(cmd, args); err != nil {
 					return err
 				}
+			default:
+				logx.Warn("unknown format %q in lumina.yaml, skipping", format)
 			}
 		}
 
+		logx.Success("build all completed: %d format(s) built", len(ms.Config.Formats))
 		return nil
 	},
 }

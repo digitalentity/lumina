@@ -63,6 +63,12 @@ RUN curl -L -o pandoc.deb https://github.com/jgm/pandoc/releases/download/3.9.0.
 # Install pandoc-crossref (v0.3.24a - matches pandoc v3.9.0.2)
 RUN curl -L https://github.com/lierdakil/pandoc-crossref/releases/download/v0.3.24a/pandoc-crossref-Linux-X64.tar.xz | tar -xJ -C /usr/local/bin/
 
+# Install pandoc-acro (acronym expansion filter, driven by the `acronyms`
+# key in metadata.yaml)
+RUN apt-get update && apt-get install -y python3 python3-pip \
+    && pip install --no-cache-dir --break-system-packages pandoc-acro \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install Vale (v3.15.1)
 RUN curl -sfL https://github.com/errata-ai/vale/releases/download/v3.15.1/vale_3.15.1_Linux_64-bit.tar.gz | tar -xz -C /usr/local/bin vale
 

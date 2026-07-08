@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"lumina/internal/citations"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 )
@@ -23,38 +24,36 @@ var pubCmd = &cobra.Command{
 			return err
 		}
 
+		logx.Section("Publication gates")
+
 		// 1. Citation check (fatal gate)
 		res, err := citations.Check(ms)
 		if err != nil {
 			return err
 		}
-		if len(res.Missing) > 0 {
-			fmt.Fprintln(os.Stderr, "Gate 1 Failed: Missing citations:")
-			for _, m := range res.Missing {
-				fmt.Fprintf(os.Stderr, "  @%s is cited but not defined in references.bib\n", m)
-			}
-			os.Exit(1)
+		if !res.Report() {
+			return fmt.Errorf("gate 1 failed: %d missing citation(s)", len(res.Missing))
 		}
-		fmt.Println("Gate 1 Passed: Citation check.")
+		logx.Success("gate 1 passed: citation check")
 
 		// 2. Vale linter check
 		stylesDir := filepath.Join(ms.Root, "styles")
 		if _, err := os.Stat(stylesDir); os.IsNotExist(err) {
-			fmt.Println("Styles directory absent. Running 'vale sync'...")
-			_ = ms.Runner.Run("vale", []string{"sync"}, ms.Root)
+			logx.Step("styles directory absent, running 'vale sync'...")
+			if err := ms.Runner.Run("vale", []string{"sync"}, ms.Root); err != nil {
+				logx.Warn("vale sync failed: %v", err)
+			}
 		}
 
 		// Check vale presence
 		if err := pandoc.CheckPresent(ms.Runner, "vale"); err == nil {
-			fmt.Println("Running Vale prose linter...")
-			err = ms.Runner.Run("vale", []string{"manuscript.md"}, ms.Root)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "Gate 2 Failed: Vale prose linter reported errors.")
-				os.Exit(1)
+			logx.Step("running Vale prose linter...")
+			if err := ms.Runner.Run("vale", []string{"manuscript.md"}, ms.Root); err != nil {
+				return fmt.Errorf("gate 2 failed: Vale prose linter reported errors: %w", err)
 			}
-			fmt.Println("Gate 2 Passed: Prose linting.")
+			logx.Success("gate 2 passed: prose linting")
 		} else {
-			fmt.Println("Warning: Vale prose linter not found. Skipping Gate 2.")
+			logx.Warn("Vale prose linter not found, skipping gate 2")
 		}
 
 		// 3. Word limit check
@@ -65,16 +64,15 @@ var pubCmd = &cobra.Command{
 			}
 			wordsCount := len(strings.Fields(string(outBytes)))
 			if ms.Meta.WordLimit > 0 && wordsCount > ms.Meta.WordLimit {
-				fmt.Fprintf(os.Stderr, "Gate 3 Failed: Word limit exceeded (%d / %d words).\n", wordsCount, ms.Meta.WordLimit)
-				os.Exit(1)
+				return fmt.Errorf("gate 3 failed: word limit exceeded (%d / %d words)", wordsCount, ms.Meta.WordLimit)
 			}
 			if ms.Meta.WordLimit > 0 {
-				fmt.Printf("Gate 3 Passed: Word count is within limits (%d / %d words).\n", wordsCount, ms.Meta.WordLimit)
+				logx.Success("gate 3 passed: word count within limits (%d / %d words)", wordsCount, ms.Meta.WordLimit)
 			} else {
-				fmt.Printf("Gate 3 Passed: Word count is %d words (no limit set).\n", wordsCount)
+				logx.Success("gate 3 passed: word count is %d words (no limit set)", wordsCount)
 			}
 		} else {
-			fmt.Println("Warning: pandoc not found. Skipping Gate 3.")
+			logx.Warn("pandoc not found, skipping gate 3")
 		}
 
 		// 4. Scan for TODO or {.todo} markers
@@ -83,13 +81,12 @@ var pubCmd = &cobra.Command{
 			return err
 		}
 		if bytes.Contains(mdContent, []byte("TODO")) || bytes.Contains(mdContent, []byte("{.todo}")) {
-			fmt.Fprintln(os.Stderr, "Gate 4 Failed: Manuscript contains TODO or {.todo} markers.")
-			os.Exit(1)
+			return fmt.Errorf("gate 4 failed: manuscript contains TODO or {.todo} markers")
 		}
-		fmt.Println("Gate 4 Passed: TODO check.")
+		logx.Success("gate 4 passed: no TODO markers")
 
 		// Gates pass -> Build artifacts
-		fmt.Println("All gates passed! Building release artifacts...")
+		logx.Step("all gates passed, building release artifacts...")
 		if err := pdfCmd.RunE(cmd, args); err != nil {
 			return err
 		}
@@ -112,9 +109,9 @@ var pubCmd = &cobra.Command{
 			return fmt.Errorf("failed to copy dated ZIP: %w", err)
 		}
 
-		fmt.Println("Release artifacts created successfully:")
-		fmt.Printf("  %s\n", pdfDated)
-		fmt.Printf("  %s\n", zipDated)
+		logx.Success("release artifacts created:")
+		logx.Info("%s", pdfDated)
+		logx.Info("%s", zipDated)
 
 		return nil
 	},

@@ -1,11 +1,11 @@
 package build
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 	"lumina/internal/preprocess"
@@ -51,23 +51,23 @@ var pdfCmd = &cobra.Command{
 			Input:        ms.IntermediateSource(),
 			MetadataFile: ms.IntermediateMeta(),
 			Output:       ms.BuildPath("pdf"),
-			Filters:      []string{"pandoc-crossref"},
+			Filters:      []string{"pandoc-acro", "pandoc-crossref"},
 			ExtraFlags:   []string{"--citeproc", "--pdf-engine=" + engine},
 			Template:     template,
 		}
 
 		// Check if tools are present
-		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-crossref"); err != nil {
+		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-acro", "pandoc-crossref"); err != nil {
 			return err
 		}
 
-		fmt.Println("Compiling PDF...")
+		logx.Step("compiling PDF (%s)...", engine)
 		err = inv.Run(ms)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("PDF created successfully: %s\n", ms.BuildPath("pdf"))
+		logx.Success("PDF created: %s", ms.BuildPath("pdf"))
 		return nil
 	},
 }

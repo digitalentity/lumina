@@ -1,6 +1,7 @@
 package citations
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -99,4 +100,41 @@ We cite @good1 and @missing1.
 	if !foundMissingField {
 		t.Errorf("expected warning for warn1 missing field, got %v", res.Warnings)
 	}
+}
+
+func TestResultReport(t *testing.T) {
+	t.Run("no missing citations reports true", func(t *testing.T) {
+		res := Result{Warnings: []Warning{{Kind: "duplicate-key", Message: "duplicate key: @foo"}}}
+		if ok := captureReport(t, res); !ok {
+			t.Errorf("expected Report to return true when Missing is empty")
+		}
+	})
+
+	t.Run("missing citations reports false", func(t *testing.T) {
+		res := Result{Missing: []string{"absent1"}}
+		if ok := captureReport(t, res); ok {
+			t.Errorf("expected Report to return false when Missing is non-empty")
+		}
+	})
+}
+
+// captureReport runs Result.Report with stderr redirected so the test does
+// not spam its own output, returning the boolean Report reports.
+func captureReport(t *testing.T, res Result) bool {
+	t.Helper()
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+
+	ok := res.Report()
+
+	_ = w.Close()
+	_, _ = io.Copy(io.Discard, r)
+	_ = r.Close()
+
+	return ok
 }

@@ -92,8 +92,12 @@ The Go codebase starts from the existing `papertool` implementation in
     `csl`, `numbersections`, `geometry`, `linestretch`, `toc`,
     `lof`, `lot`, and any other pandoc metadata keys.
   * **Lumina-specific keys** — consumed by lumina, not forwarded to pandoc:
-    `wordlimit` (integer, word cap enforced by `release`),
-    `acronyms` (map of `KEY: definition` for acronym expansion).
+    `wordlimit` (integer, word cap enforced by `release`).
+  * **Reshaped-and-forwarded keys** — not lumina-specific, but lumina
+    massages their shape before forwarding: `acronyms` (author writes
+    `KEY: "definition"`; lumina reshapes to pandoc-acro's
+    `KEY: {short: KEY, long: "definition"}` schema; the `pandoc-acro`
+    filter expands `+KEY` references in the body at build time).
 * CSL files resolved from a shared location (XDG config dir or bundled
   defaults) rather than a repo-relative directory.
 * `lumina init` — scaffold a new manuscript directory: creates
@@ -124,8 +128,8 @@ The Go codebase starts from the existing `papertool` implementation in
   the development lifecycle of lumina itself:
   - `make` / `make build` — compile the `lumina` Go binary.
   - `make image` — build the `lumina-tools:latest` Docker image containing
-    all required external tools (pandoc, pandoc-crossref, mmdc, vale,
-    prettier, TeX Live, zip).
+    all required external tools (pandoc, pandoc-crossref, pandoc-acro, mmdc,
+    vale, prettier, TeX Live, zip).
   - `make install` — install the lumina binary to `/usr/local/bin`.
   Lumina does not build or manage the tools image at runtime.
 
@@ -193,16 +197,18 @@ Does not touch `manuscript.md`, `metadata.yaml`, `references.bib`,
 Reads `manuscript.md` and `metadata.yaml`, writes a preprocessed copy to
 `.lumina/manuscript.md`.
 
-Transformations performed in order:
+Transformations performed:
 1. **Mermaid rendering** — finds all ```` ```mermaid ```` fenced code blocks,
    hashes the block source (SHA-256, first 16 hex chars), checks
    `.lumina/figures/mermaid-<hash>.png` for a cached render, renders via
    `mmdc` only on cache miss, replaces the block with a standard image link
    `![Mermaid Diagram](figures/mermaid-<hash>.png)`.
-2. **Acronym expansion** — reads `acronyms:` map from `metadata.yaml`; on
-   first occurrence of `+KEY` (case-insensitive) in body text, replaces with
-   `definition (KEY)`; subsequent occurrences replace with `KEY` only.
-   Skipped inside code spans, code blocks, and HTML blocks.
+
+Acronym expansion (`+KEY` in body text) is **not** performed by lumina.
+The `acronyms:` map in `metadata.yaml` is reshaped into pandoc-acro's
+`KEY: {short: KEY, long: definition}` schema and forwarded verbatim to
+`.lumina/metadata.yaml`; the `pandoc-acro` filter expands `+KEY` at pandoc
+build time (see the pandoc invocations below).
 
 Also copies `figures/*` (static) into `.lumina/figures/`, `references.bib`
 into `.lumina/references.bib`, and `metadata.yaml` into
@@ -218,7 +224,7 @@ Produces `_build/<manuscript-stem>.pdf`. Runs `build preprocess` first if
 intermediate files are absent or stale.
 
 Pandoc invocation: `pandoc .lumina/manuscript.md --metadata-file
-.lumina/metadata.yaml --filter pandoc-crossref --citeproc
+.lumina/metadata.yaml --filter pandoc-acro --filter pandoc-crossref --citeproc
 --pdf-engine=<engine> -o _build/<stem>.pdf`.
 
 PDF engine defaults to `xelatex`; overridden by `lumina.yaml` `pdf-engine`
@@ -233,8 +239,8 @@ Produces `_build/<manuscript-stem>.docx`. Runs `build preprocess` first if
 stale.
 
 Pandoc invocation: adds `--metadata-file .lumina/metadata.yaml --filter
-pandoc-crossref --citeproc`. If `publish/reference.docx` exists, passed as
-`--reference-doc`.
+pandoc-acro --filter pandoc-crossref --citeproc`. If `publish/reference.docx`
+exists, passed as `--reference-doc`.
 
 ---
 
@@ -244,7 +250,7 @@ Produces `_build/<manuscript-stem>.tex` — a standalone LaTeX source file.
 Runs `build preprocess` first if stale.
 
 Pandoc invocation: adds `-s --metadata-file .lumina/metadata.yaml --filter
-pandoc-crossref --citeproc`.
+pandoc-acro --filter pandoc-crossref --citeproc`.
 
 Useful for Overleaf upload and as input to `lumina build zip`.
 
@@ -488,8 +494,7 @@ lumina/
 │   │   └── docker.go               DockerRunner
 │   ├── preprocess/
 │   │   ├── preprocess.go           Run(), IsStale(), Options
-│   │   ├── mermaid.go              Block detection, mmdc via Runner, cache
-│   │   └── acronym.go              Acronym expansion via Goldmark AST walk
+│   │   └── mermaid.go              Block detection, mmdc via Runner, cache
 │   ├── citations/
 │   │   └── citations.go            Check(), Result, Warning
 │   ├── bibtex/
@@ -562,10 +567,15 @@ type Config struct {
 // LuminaMetadata holds lumina-specific keys from metadata.yaml.
 // Stripped before metadata.yaml is copied to .lumina/ for pandoc.
 type LuminaMetadata struct {
-    WordLimit int               `yaml:"wordlimit"` // 0 = unlimited
-    Acronyms  map[string]string `yaml:"acronyms"`  // KEY -> full definition
+    WordLimit int `yaml:"wordlimit"` // 0 = unlimited
 }
 
+// LoadConfig reads lumina.yaml.
+//
+// LoadMetadata reads metadata.yaml, strips wordlimit into LuminaMetadata,
+// and reshapes acronyms (author-facing `KEY: "definition"`) into
+// pandoc-acro's `KEY: {short: KEY, long: "definition"}` schema in the
+// returned map — acronyms is forwarded to pandoc, not consumed by lumina.
 func LoadConfig(root string) (Config, error)
 func LoadMetadata(root string) (LuminaMetadata, map[string]any, error)
 ```
@@ -622,7 +632,7 @@ type Invocation struct {
     Input        string   // .lumina/manuscript.md
     MetadataFile string   // .lumina/metadata.yaml
     Output       string   // _build/manuscript.<ext>
-    Filters      []string // ["pandoc-crossref"]
+    Filters      []string // ["pandoc-acro", "pandoc-crossref"]
     ExtraFlags   []string // ["-s", "--pdf-engine=xelatex", ...]
     Template     string   // --template; empty = omit
     ReferenceDoc string   // --reference-doc; empty = omit
@@ -725,9 +735,9 @@ root.
 
 | Format | Key pandoc flags |
 |--------|------------------|
-| `pdf`  | `--metadata-file .lumina/metadata.yaml --filter pandoc-crossref --citeproc --pdf-engine=<engine> [--template publish/template.tex]` |
-| `docx` | `--metadata-file .lumina/metadata.yaml --filter pandoc-crossref --citeproc [--reference-doc publish/reference.docx]` |
-| `tex`  | `--metadata-file .lumina/metadata.yaml --filter pandoc-crossref --citeproc -s [--template publish/template.tex]` |
+| `pdf`  | `--metadata-file .lumina/metadata.yaml --filter pandoc-acro --filter pandoc-crossref --citeproc --pdf-engine=<engine> [--template publish/template.tex]` |
+| `docx` | `--metadata-file .lumina/metadata.yaml --filter pandoc-acro --filter pandoc-crossref --citeproc [--reference-doc publish/reference.docx]` |
+| `tex`  | `--metadata-file .lumina/metadata.yaml --filter pandoc-acro --filter pandoc-crossref --citeproc -s [--template publish/template.tex]` |
 | `zip`  | depends on `tex`; `zip -r` over `.tex`, `references.bib`, `figures/` |
 
 Word count: `pandoc manuscript.md --to=plain --quiet` piped to `wc -w`.
@@ -735,9 +745,11 @@ Operates on the source file directly; runs through the configured Runner.
 
 #### `metadata.yaml` key contract
 
-Lumina strips `wordlimit` and `acronyms` before writing
-`.lumina/metadata.yaml`. All other keys forwarded verbatim. Unknown
-lumina-specific keys are ignored with a warning (future-proofing).
+Lumina strips `wordlimit` before writing `.lumina/metadata.yaml`. `acronyms`
+is reshaped from the author-facing `KEY: "definition"` form into
+pandoc-acro's `KEY: {short: KEY, long: "definition"}` schema and forwarded —
+it is consumed by the `pandoc-acro` filter at build time, not by lumina.
+All other keys forwarded verbatim.
 
 #### `lumina.yaml` schema (complete)
 
@@ -800,6 +812,7 @@ long-running container or exec is used.
 |------|---------|-------------|
 | `pandoc` | 3.0 | `build pdf/docx/tex`, `text words` |
 | `pandoc-crossref` | matches pandoc | `build pdf/docx/tex` |
+| `pandoc-acro` | any | `build pdf/docx/tex` |
 | `mmdc` | 10.0 | `build preprocess` |
 | `vale` | 3.0 | `text lint` |
 | `prettier` | 3.0 | `text fmt` |

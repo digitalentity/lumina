@@ -2,10 +2,10 @@ package lit
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/citations"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 )
 
@@ -23,24 +23,11 @@ var checkCmd = &cobra.Command{
 			return err
 		}
 
-		// Print warnings first (non-fatal)
-		if len(res.Warnings) > 0 {
-			fmt.Fprintln(os.Stderr, "Bibliography quality warnings:")
-			for _, w := range res.Warnings {
-				fmt.Fprintf(os.Stderr, "  [%s] %s\n", w.Kind, w.Message)
-			}
+		if !res.Report() {
+			return fmt.Errorf("citation check failed: %d missing citation(s)", len(res.Missing))
 		}
 
-		// Check missing citations (fatal)
-		if len(res.Missing) > 0 {
-			fmt.Fprintln(os.Stderr, "Error: Missing citations:")
-			for _, m := range res.Missing {
-				fmt.Fprintf(os.Stderr, "  @%s is cited but not defined in references.bib\n", m)
-			}
-			os.Exit(1)
-		}
-
-		fmt.Println("Citation check passed successfully.")
+		logx.Success("citation check passed")
 		return nil
 	},
 }

@@ -51,6 +51,23 @@ func TestParse(t *testing.T) {
 	}
 }
 
+func TestRemovedEntries(t *testing.T) {
+	entries := []Entry{
+		{Key: "key1", Type: "article"},
+		{Key: "key2", Type: "article"},
+		{Key: "key3", Type: "book"},
+	}
+
+	removed := RemovedEntries(entries, []string{"key1", "key3"})
+	if len(removed) != 1 || removed[0].Key != "key2" {
+		t.Errorf("expected only key2 to be removed, got %+v", removed)
+	}
+
+	if got := RemovedEntries(entries, []string{"key1", "key2", "key3"}); len(got) != 0 {
+		t.Errorf("expected no removed entries when all are cited, got %+v", got)
+	}
+}
+
 func TestPruneAndFormat(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "lumina-bibtex-prune-test")
 	if err != nil {

@@ -1,11 +1,11 @@
 package lit
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/bibtex"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 )
 
@@ -19,12 +19,11 @@ var fmtCmd = &cobra.Command{
 		}
 
 		bibPath := filepath.Join(ms.Root, "references.bib")
-		err = bibtex.Format(bibPath)
-		if err != nil {
+		if err := bibtex.Format(bibPath); err != nil {
 			return err
 		}
 
-		fmt.Println("Formatted references.bib successfully.")
+		logx.Success("formatted references.bib")
 		return nil
 	},
 }

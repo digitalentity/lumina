@@ -64,6 +64,11 @@ acronyms:
 	_ = os.WriteFile(bibPath, []byte(""), 0644)
 	_ = os.MkdirAll(filepath.Join(tempDir, "figures"), 0755)
 
+	meta, rawMeta, err := config.LoadMetadata(tempDir)
+	if err != nil {
+		t.Fatalf("LoadMetadata failed: %v", err)
+	}
+
 	ms := &manuscript.Manuscript{
 		Root:      tempDir,
 		Source:    mPath,
@@ -71,12 +76,9 @@ acronyms:
 		BuildDir:  filepath.Join(tempDir, "_build"),
 		Stem:      "manuscript",
 		Config:    config.Config{},
-		Meta: config.LuminaMetadata{
-			Acronyms: map[string]string{
-				"API": "Application Programming Interface",
-			},
-		},
-		Runner: &MockRunner{},
+		Meta:      meta,
+		RawMeta:   rawMeta,
+		Runner:    &MockRunner{},
 	}
 
 	// 1. Initially it should be stale (dest file doesn't exist)
@@ -100,8 +102,20 @@ acronyms:
 		t.Fatalf("failed to read dest: %v", err)
 	}
 
-	if !bytes.Contains(destContent, []byte("Application Programming Interface (API)")) {
-		t.Errorf("acronym not expanded: %s", string(destContent))
+	// Acronym expansion is left to the pandoc-acro filter at build time,
+	// so the +KEY marker passes through untouched here.
+	if !bytes.Contains(destContent, []byte("This is +API.")) {
+		t.Errorf("expected +API to pass through unexpanded: %s", string(destContent))
+	}
+
+	// The acronyms map should be forwarded to .lumina/metadata.yaml in
+	// pandoc-acro's schema rather than stripped.
+	intermediateMeta, err := os.ReadFile(ms.IntermediateMeta())
+	if err != nil {
+		t.Fatalf("failed to read intermediate metadata: %v", err)
+	}
+	if !bytes.Contains(intermediateMeta, []byte("short: API")) || !bytes.Contains(intermediateMeta, []byte("long: Application Programming Interface")) {
+		t.Errorf("expected acronyms forwarded in pandoc-acro schema: %s", string(intermediateMeta))
 	}
 
 	// 3. It should not be stale now
@@ -127,5 +141,22 @@ acronyms:
 	}
 	if !stale {
 		t.Error("expected to be stale after source file modification")
+	}
+
+	// 5. Re-run to clear staleness, then touch references.bib only.
+	if err := Run(ms, Options{}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(bibPath, []byte("@article{k1, title={x}}"), 0644); err != nil {
+		t.Fatalf("failed to touch references.bib: %v", err)
+	}
+
+	stale, err = IsStale(ms)
+	if err != nil {
+		t.Fatalf("IsStale failed: %v", err)
+	}
+	if !stale {
+		t.Error("expected to be stale after references.bib modification")
 	}
 }

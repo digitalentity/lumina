@@ -50,7 +50,7 @@ func (d *DockerRunner) dockerCmd(tool string, args []string, cwd string) *exec.C
 
 	rewrittenArgs := make([]string, len(args))
 	for i, arg := range args {
-		rewrittenArgs[i] = strings.ReplaceAll(arg, cleanRoot, "/workspace")
+		rewrittenArgs[i] = rewriteArg(arg, cleanRoot)
 	}
 
 	dockerArgs := []string{
@@ -66,6 +66,23 @@ func (d *DockerRunner) dockerCmd(tool string, args []string, cwd string) *exec.C
 	dockerArgs = append(dockerArgs, rewrittenArgs...)
 
 	return exec.Command("docker", dockerArgs...)
+}
+
+// rewriteArg rewrites arg to its /workspace-relative equivalent if it is an
+// absolute path rooted under cleanRoot. Unlike a blind substring replace,
+// this leaves untouched any argument that merely happens to contain
+// cleanRoot as a substring without actually being a path under it (e.g. a
+// flag value or filename that coincidentally embeds the root directory's
+// name).
+func rewriteArg(arg, cleanRoot string) string {
+	cleanArg := filepath.Clean(arg)
+	if cleanArg == cleanRoot {
+		return "/workspace"
+	}
+	if rel, ok := strings.CutPrefix(cleanArg, cleanRoot+string(filepath.Separator)); ok {
+		return filepath.Join("/workspace", rel)
+	}
+	return arg
 }
 
 // CheckPresent checks that docker is on PATH and the tools image exists.

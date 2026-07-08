@@ -1,10 +1,10 @@
 package text
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 )
@@ -28,15 +28,13 @@ var wordsCmd = &cobra.Command{
 		}
 
 		wordsCount := len(strings.Fields(string(outBytes)))
-		if ms.Meta.WordLimit > 0 {
-			if wordsCount > ms.Meta.WordLimit {
-				// Print warning in red using terminal color codes
-				fmt.Printf("\033[31mWord count: %d / %d (limit exceeded!)\033[0m\n", wordsCount, ms.Meta.WordLimit)
-			} else {
-				fmt.Printf("Word count: %d / %d\n", wordsCount, ms.Meta.WordLimit)
-			}
-		} else {
-			fmt.Printf("Word count: %d\n", wordsCount)
+		switch {
+		case ms.Meta.WordLimit > 0 && wordsCount > ms.Meta.WordLimit:
+			logx.Warn("word count: %d / %d (limit exceeded!)", wordsCount, ms.Meta.WordLimit)
+		case ms.Meta.WordLimit > 0:
+			logx.Success("word count: %d / %d", wordsCount, ms.Meta.WordLimit)
+		default:
+			logx.Info("word count: %d", wordsCount)
 		}
 
 		return nil

@@ -1,11 +1,11 @@
 package build
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 	"lumina/internal/preprocess"
@@ -39,22 +39,22 @@ var docxCmd = &cobra.Command{
 			Input:        ms.IntermediateSource(),
 			MetadataFile: ms.IntermediateMeta(),
 			Output:       ms.BuildPath("docx"),
-			Filters:      []string{"pandoc-crossref"},
+			Filters:      []string{"pandoc-acro", "pandoc-crossref"},
 			ExtraFlags:   []string{"--citeproc"},
 			ReferenceDoc: referenceDoc,
 		}
 
-		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-crossref"); err != nil {
+		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-acro", "pandoc-crossref"); err != nil {
 			return err
 		}
 
-		fmt.Println("Compiling DOCX...")
+		logx.Step("compiling DOCX...")
 		err = inv.Run(ms)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("DOCX created successfully: %s\n", ms.BuildPath("docx"))
+		logx.Success("DOCX created: %s", ms.BuildPath("docx"))
 		return nil
 	},
 }

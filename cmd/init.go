@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/scaffold"
 )
 
@@ -15,7 +16,11 @@ var initCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return scaffold.Init(cwd)
+		if err := scaffold.Init(cwd); err != nil {
+			return err
+		}
+		logx.Success("manuscript scaffolded in %s", cwd)
+		return nil
 	},
 }
 

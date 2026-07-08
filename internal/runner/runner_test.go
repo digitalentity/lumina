@@ -1,8 +1,8 @@
 package runner
 
 import (
-	"testing"
 	"lumina/internal/config"
+	"testing"
 )
 
 func TestNew(t *testing.T) {
@@ -36,6 +36,28 @@ func TestHostRunner(t *testing.T) {
 	err := r.Run("go", []string{"version"}, ".")
 	if err != nil {
 		t.Errorf("expected go version to run successfully, got %v", err)
+	}
+}
+
+func TestRewriteArg(t *testing.T) {
+	root := "/home/user/manuscript"
+
+	for _, tc := range []struct {
+		name string
+		arg  string
+		want string
+	}{
+		{"root itself", "/home/user/manuscript", "/workspace"},
+		{"path under root", "/home/user/manuscript/figures/diagram.png", "/workspace/figures/diagram.png"},
+		{"unrelated absolute path", "/home/user/manuscript-notes/foo", "/home/user/manuscript-notes/foo"},
+		{"non-path flag value", "--pdf-engine=xelatex", "--pdf-engine=xelatex"},
+		{"relative path", "manuscript.md", "manuscript.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := rewriteArg(tc.arg, root); got != tc.want {
+				t.Errorf("rewriteArg(%q, %q) = %q, expected %q", tc.arg, root, got, tc.want)
+			}
+		})
 	}
 }
 

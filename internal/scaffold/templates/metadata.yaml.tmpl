@@ -6,8 +6,12 @@ bibliography:   "references.bib"
 csl:            "ieee.csl"
 numbersections: true
 
-# lumina-specific (not forwarded to pandoc):
+# lumina-specific, not forwarded to pandoc:
 wordlimit:  0         # 0 = no limit
+
+# Forwarded to the pandoc-acro filter at build time. Reference an entry in
+# the manuscript body with +KEY (e.g. "+API"): long form + short form in
+# parentheses on first use, short form only on subsequent uses.
 acronyms:
   # Examples:
   # API: "Application Programming Interface"

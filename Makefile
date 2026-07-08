@@ -1,12 +1,14 @@
 # Makefile — build, test, and install targets for lumina.
 
-BINARY  := lumina
-INSTALL := $(HOME)/.local/bin/$(BINARY)
-IMAGE   := lumina-tools:latest
+BUILD_DIR := _build
+BINARY    := $(BUILD_DIR)/lumina
+INSTALL   := $(HOME)/.local/bin/lumina
+IMAGE     := lumina-tools:latest
 
 .PHONY: build test vet install image clean-bin
 
 build:
+	mkdir -p $(BUILD_DIR)
 	go build -o $(BINARY) .
 
 test:
@@ -23,4 +25,4 @@ image:
 	docker build -t $(IMAGE) .
 
 clean-bin:
-	rm -f $(BINARY)
+	rm -rf $(BUILD_DIR)

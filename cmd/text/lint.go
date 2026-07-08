@@ -1,11 +1,11 @@
 package text
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 )
@@ -26,20 +26,18 @@ var lintCmd = &cobra.Command{
 		// Run 'vale sync' if styles/ does not exist
 		stylesDir := filepath.Join(ms.Root, "styles")
 		if _, err := os.Stat(stylesDir); os.IsNotExist(err) {
-			fmt.Println("Styles directory absent. Running 'vale sync'...")
-			err = ms.Runner.Run("vale", []string{"sync"}, ms.Root)
-			if err != nil {
+			logx.Step("styles directory absent, running 'vale sync'...")
+			if err := ms.Runner.Run("vale", []string{"sync"}, ms.Root); err != nil {
 				return err
 			}
 		}
 
-		fmt.Println("Linting manuscript prose...")
-		err = ms.Runner.Run("vale", []string{"manuscript.md"}, ms.Root)
-		if err != nil {
+		logx.Step("linting manuscript prose...")
+		if err := ms.Runner.Run("vale", []string{"manuscript.md"}, ms.Root); err != nil {
 			return err
 		}
 
-		fmt.Println("Prose linting completed with zero errors.")
+		logx.Success("prose linting completed with zero errors")
 		return nil
 	},
 }

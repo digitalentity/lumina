@@ -1,9 +1,8 @@
 package build
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
+	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/preprocess"
 )
@@ -28,7 +27,7 @@ var preprocessCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println("Preprocessing completed successfully.")
+		logx.Success("preprocessing completed")
 		return nil
 	},
 }

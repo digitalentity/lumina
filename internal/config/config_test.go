@@ -75,9 +75,6 @@ func TestLoadMetadata(t *testing.T) {
 		if meta.WordLimit != 0 {
 			t.Errorf("expected wordlimit 0, got %d", meta.WordLimit)
 		}
-		if len(meta.Acronyms) != 0 {
-			t.Errorf("expected 0 acronyms, got %d", len(meta.Acronyms))
-		}
 		if len(raw) != 0 {
 			t.Errorf("expected empty raw map, got %+v", raw)
 		}
@@ -105,20 +102,58 @@ acronyms:
 		if meta.WordLimit != 3000 {
 			t.Errorf("expected wordlimit 3000, got %d", meta.WordLimit)
 		}
-		expectedAcronyms := map[string]string{
-			"API": "Application Programming Interface",
-			"CLI": "Command Line Interface",
-		}
-		if !reflect.DeepEqual(meta.Acronyms, expectedAcronyms) {
-			t.Errorf("got acronyms %+v, expected %+v", meta.Acronyms, expectedAcronyms)
-		}
 
+		// wordlimit is stripped (lumina-only); acronyms is reshaped into
+		// pandoc-acro's schema and forwarded, not stripped.
 		expectedRaw := map[string]any{
 			"title":  "A Great Paper",
 			"author": "Alice",
+			"acronyms": map[string]any{
+				"API": map[string]any{"short": "API", "long": "Application Programming Interface"},
+				"CLI": map[string]any{"short": "CLI", "long": "Command Line Interface"},
+			},
 		}
 		if !reflect.DeepEqual(raw, expectedRaw) {
 			t.Errorf("got raw metadata %+v, expected %+v", raw, expectedRaw)
 		}
 	})
+
+}
+
+func TestAcroSchema(t *testing.T) {
+	in := map[string]any{
+		"API": "Application Programming Interface",
+		"CLI": map[string]any{"short": "CLI", "long": "Command Line Interface", "long-plural": "es"},
+	}
+
+	got := acroSchema(in)
+
+	expected := map[string]any{
+		"API": map[string]any{"short": "API", "long": "Application Programming Interface"},
+		"CLI": map[string]any{"short": "CLI", "long": "Command Line Interface", "long-plural": "es"},
+	}
+	if !reflect.DeepEqual(got, expected) {
+		t.Errorf("got %+v, expected %+v", got, expected)
+	}
+}
+
+func TestAsInt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		val    any
+		want   int
+		wantOk bool
+	}{
+		{"int", int(1500), 1500, true},
+		{"int64", int64(1500), 1500, true},
+		{"uint64", uint64(1500), 1500, true},
+		{"string", "1500", 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := asInt(tc.val)
+			if ok != tc.wantOk || got != tc.want {
+				t.Errorf("asInt(%v) = (%d, %v), expected (%d, %v)", tc.val, got, ok, tc.want, tc.wantOk)
+			}
+		})
+	}
 }
