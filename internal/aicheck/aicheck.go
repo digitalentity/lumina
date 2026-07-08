@@ -97,6 +97,11 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 		bibMap[entry.Key] = entry
 	}
 
+	pdfMap, err := buildPDFMap(ms.Root, bibMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan literature directory: %w", err)
+	}
+
 	// 4. Read manuscript paragraphs
 	mdContent, err := os.ReadFile(ms.Source)
 	if err != nil {
@@ -121,11 +126,19 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 				}
 
 				// Find PDF file
-				pdfPath := filepath.Join(ms.Root, "literature", key+".pdf")
+				pdfPath, hasPDF := pdfMap[key]
+				if !hasPDF {
+					fallbackPath := filepath.Join(ms.Root, "literature", key+".pdf")
+					if _, err := os.Stat(fallbackPath); err == nil {
+						pdfPath = fallbackPath
+						hasPDF = true
+					}
+				}
+
 				var chunks []string
 				pdfHash := "missing-pdf"
 
-				if _, err := os.Stat(pdfPath); err == nil {
+				if hasPDF {
 					hash, err := cache.GetFileHash(pdfPath)
 					if err == nil {
 						pdfHash = hash
@@ -298,4 +311,35 @@ func SplitIntoChunks(text string) []string {
 		}
 	}
 	return chunks
+}
+
+// buildPDFMap scans the literature directory to match citation keys to PDFs and updates the bibMap.
+func buildPDFMap(root string, bibMap map[string]bibtex.Entry) (map[string]string, error) {
+	pdfMap := make(map[string]string)
+	litDir := filepath.Join(root, "literature")
+	files, err := os.ReadDir(litDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return pdfMap, nil
+		}
+		return nil, err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".bib") {
+			bibFilePath := filepath.Join(litDir, file.Name())
+			if subEntries, err := bibtex.Parse(bibFilePath); err == nil {
+				pdfFilePath := strings.TrimSuffix(bibFilePath, ".bib") + ".pdf"
+				if _, err := os.Stat(pdfFilePath); err == nil {
+					for _, entry := range subEntries {
+						pdfMap[entry.Key] = pdfFilePath
+						if _, exists := bibMap[entry.Key]; !exists {
+							bibMap[entry.Key] = entry
+						}
+					}
+				}
+			}
+		}
+	}
+	return pdfMap, nil
 }

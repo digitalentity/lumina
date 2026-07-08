@@ -1,9 +1,13 @@
 package aicheck
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"lumina/internal/bibtex"
 )
 
 func TestExtractManuscriptParagraphs(t *testing.T) {
@@ -75,5 +79,48 @@ Third paragraph.
 
 	if chunks[1] != "Second paragraph of the paper." {
 		t.Errorf("got %q", chunks[1])
+	}
+}
+
+func TestBuildPDFMap(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lumina-pdfmap-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	litDir := filepath.Join(tmpDir, "literature")
+	if err := os.MkdirAll(litDir, 0755); err != nil {
+		t.Fatalf("failed to create literature dir: %v", err)
+	}
+
+	// Create a mock .bib and corresponding .pdf
+	bibContent := `@article{smith2024,
+  title = {Warp Distortion},
+  author = {John Smith},
+}`
+	if err := os.WriteFile(filepath.Join(litDir, "paper_one.bib"), []byte(bibContent), 0644); err != nil {
+		t.Fatalf("failed to write bib file: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(litDir, "paper_one.pdf"), []byte("mock pdf data"), 0644); err != nil {
+		t.Fatalf("failed to write pdf file: %v", err)
+	}
+
+	bibMap := make(map[string]bibtex.Entry)
+	pdfMap, err := buildPDFMap(tmpDir, bibMap)
+	if err != nil {
+		t.Fatalf("buildPDFMap error: %v", err)
+	}
+
+	expectedPDF := filepath.Join(litDir, "paper_one.pdf")
+	if pdfMap["smith2024"] != expectedPDF {
+		t.Errorf("expected smith2024 to map to %q, got %q", expectedPDF, pdfMap["smith2024"])
+	}
+
+	entry, exists := bibMap["smith2024"]
+	if !exists {
+		t.Errorf("expected smith2024 to be added to bibMap")
+	} else if entry.Fields["title"] != "Warp Distortion" {
+		t.Errorf("expected entry title to be 'Warp Distortion', got %q", entry.Fields["title"])
 	}
 }
