@@ -68,14 +68,19 @@ func Load() (*Manuscript, error) {
 	}, nil
 }
 
+// LuminaBuildDir returns the path to the intermediate build directory (.lumina/build).
+func (m *Manuscript) LuminaBuildDir() string {
+	return filepath.Join(m.LuminaDir, "build")
+}
+
 // IntermediateSource returns the path to the preprocessed manuscript.
 func (m *Manuscript) IntermediateSource() string {
-	return filepath.Join(m.LuminaDir, "manuscript.md")
+	return filepath.Join(m.LuminaBuildDir(), "manuscript.md")
 }
 
 // IntermediateMeta returns the path to the preprocessed metadata.yaml.
 func (m *Manuscript) IntermediateMeta() string {
-	return filepath.Join(m.LuminaDir, "metadata.yaml")
+	return filepath.Join(m.LuminaBuildDir(), "metadata.yaml")
 }
 
 // BuildPath returns the path to the final build artifact with the given extension.

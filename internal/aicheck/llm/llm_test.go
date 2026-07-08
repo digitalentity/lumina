@@ -45,6 +45,34 @@ func TestCleanJSON(t *testing.T) {
 	}
 }
 
+func TestParseVerificationResult(t *testing.T) {
+	raw := `{"status":"supported","reasoning":"It checks out.","passages":["p1","p2"]}`
+	vr, err := ParseVerificationResult(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vr.Status != "supported" {
+		t.Errorf("expected status \"supported\", got %q", vr.Status)
+	}
+	if len(vr.Passages) != 2 {
+		t.Errorf("expected 2 passages, got %d", len(vr.Passages))
+	}
+}
+
+func TestParseUncitedClaims(t *testing.T) {
+	raw := `{"uncited_claims":[{"assertion":"Warp drives exist.","reasoning":"No citation."}]}`
+	claims, err := ParseUncitedClaims(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(claims) != 1 {
+		t.Fatalf("expected 1 claim, got %d", len(claims))
+	}
+	if claims[0].Assertion != "Warp drives exist." {
+		t.Errorf("unexpected assertion: %q", claims[0].Assertion)
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	t.Run("gemini missing key", func(t *testing.T) {
 		os.Unsetenv("GEMINI_API_KEY")
@@ -69,12 +97,8 @@ func TestNewClient(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		gClient, ok := client.(*GeminiClient)
-		if !ok {
-			t.Fatalf("expected GeminiClient, got %T", client)
-		}
-		if gClient.Model != "gemini-2.5-flash" {
-			t.Errorf("expected model gemini-2.5-flash, got %s", gClient.Model)
+		if client.ModelName() != "gemini-2.5-flash" {
+			t.Errorf("expected model gemini-2.5-flash, got %s", client.ModelName())
 		}
 	})
 
@@ -154,4 +178,3 @@ func TestRenderPrompts(t *testing.T) {
 		}
 	})
 }
-

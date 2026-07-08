@@ -8,12 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/yuin/goldmark"
-	gast "github.com/yuin/goldmark/ast"
-	gtext "github.com/yuin/goldmark/text"
-
 	"lumina/internal/aicheck/bm25"
 	"lumina/internal/aicheck/cache"
+	"lumina/internal/aicheck/chunk"
 	"lumina/internal/aicheck/llm"
 	"lumina/internal/aicheck/pdf"
 	"lumina/internal/bibtex"
@@ -64,6 +61,75 @@ func FormatEntry(e bibtex.Entry) string {
 	return sb.String()
 }
 
+// IndexLiterature scans the literature directory, extracts text from each PDF,
+// and populates the literature cache. It is called by RunCrossCheck and by the
+// dedicated "lumina ai index" subcommand.
+//
+// When force is true the existing cache is wiped before indexing.
+func IndexLiterature(ctx context.Context, ms *manuscript.Manuscript, force bool) error {
+	if force {
+		logx.Info("Forcing fresh index. Clearing lit cache...")
+		if err := cache.ClearCache(ms.Root); err != nil {
+			logx.Warn("Failed to clear cache directory: %v", err)
+		}
+	}
+
+	bibPath := filepath.Join(ms.Root, "references.bib")
+	entries, err := bibtex.Parse(bibPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read references.bib: %w", err)
+	}
+
+	bibMap := make(map[string]bibtex.Entry)
+	for _, entry := range entries {
+		bibMap[entry.Key] = entry
+	}
+
+	pdfMap, err := buildPDFMap(ms.Root, bibMap)
+	if err != nil {
+		return fmt.Errorf("failed to scan literature directory: %w", err)
+	}
+
+	pe := pdf.NewPDFExtractor(ms.Runner, ms.Root)
+	for key, pdfPath := range pdfMap {
+		bibStr := ""
+		if e, ok := bibMap[key]; ok {
+			bibStr = FormatEntry(e)
+		}
+
+		hash, err := cache.GetFileHash(pdfPath)
+		if err != nil {
+			logx.Warn("Failed to hash %s: %v", filepath.Base(pdfPath), err)
+			continue
+		}
+
+		// Skip if cache is fresh.
+		if lCache, err := cache.GetLitCache(ms.Root, hash); err == nil && lCache.BibtexEntry == bibStr {
+			logx.Info("Cache hit for %s, skipping.", filepath.Base(pdfPath))
+			continue
+		}
+
+		logx.Info("Indexing %s...", filepath.Base(pdfPath))
+		text, err := pe.ExtractText(pdfPath)
+		if err != nil {
+			logx.Warn("Failed to extract text from %s: %v", filepath.Base(pdfPath), err)
+			continue
+		}
+
+		chunks := SplitIntoChunks(text)
+		if err := cache.SaveLitCache(ms.Root, hash, &cache.LitCacheEntry{
+			BibtexKey:   key,
+			BibtexEntry: bibStr,
+			FullText:    text,
+			Chunks:      chunks,
+		}); err != nil {
+			logx.Warn("Failed to save cache for %s: %v", filepath.Base(pdfPath), err)
+		}
+	}
+
+	return nil
+}
+
 // RunCrossCheck coordinates the full AI cross-checking pipeline.
 func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (*CheckResult, error) {
 	if force {
@@ -111,8 +177,8 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 	paras := ExtractManuscriptParagraphs(string(mdContent))
 	pe := pdf.NewPDFExtractor(ms.Runner, ms.Root)
 	res := &CheckResult{
-		VerifyResults: []VerifyResult{},
-		UncitedClaims: []UncitedResult{},
+		VerifyResults: make([]VerifyResult, 0),
+		UncitedClaims: make([]UncitedResult, 0),
 	}
 
 	for _, para := range paras {
@@ -142,21 +208,28 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 					hash, err := cache.GetFileHash(pdfPath)
 					if err == nil {
 						pdfHash = hash
-						// Check cache
+						// Check cache; fall back to on-demand extraction if stale.
 						lCache, err := cache.GetLitCache(ms.Root, pdfHash)
 						if err == nil && lCache.BibtexEntry == bibStr {
 							chunks = lCache.Chunks
+							if len(chunks) == 0 && lCache.FullText != "" {
+								chunks = SplitIntoChunks(lCache.FullText)
+							}
 						} else {
-							// Cache miss or stale metadata -> extract and chunk
 							logx.Info("Processing cited literature: %s...", filepath.Base(pdfPath))
 							text, err := pe.ExtractText(pdfPath)
 							if err == nil {
 								chunks = SplitIntoChunks(text)
-								_ = cache.SaveLitCache(ms.Root, pdfHash, &cache.LitCacheEntry{
-									BibtexKey:   key,
-									BibtexEntry: bibStr,
-									Chunks:      chunks,
-								})
+								_ = cache.SaveLitCache(
+									ms.Root,
+									pdfHash,
+									&cache.LitCacheEntry{
+										BibtexKey:   key,
+										BibtexEntry: bibStr,
+										FullText:    text,
+										Chunks:      chunks,
+									},
+								)
 							} else {
 								logx.Warn("Failed to extract text from %s: %v", filepath.Base(pdfPath), err)
 							}
@@ -173,8 +246,18 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 					passages = index.Search(para.Text, 5)
 				}
 
-				// Check LLM Cache
-				cacheKey := cache.ComputeLLMKey(para.Text, pdfHash, bibStr)
+				// Render prompt once; key on (prompt, model) so template or model changes bust the cache.
+				prompt, err := llm.RenderVerifyPrompt(llm.VerifyPromptData{
+					Paragraph:   para.Text,
+					CitationKey: key,
+					Bibtex:      bibStr,
+					Passages:    passages,
+				})
+				if err != nil {
+					logx.Error("Failed to render verify prompt for @%s: %v", key, err)
+					continue
+				}
+				cacheKey := cache.ComputeLLMKey(prompt, client.ModelName())
 				if val, cached := llmCache[cacheKey]; cached {
 					res.VerifyResults = append(res.VerifyResults, VerifyResult{
 						Paragraph:   para.Text,
@@ -184,15 +267,18 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 						Passages:    val.Passages,
 					})
 				} else {
-					// Query LLM
 					logx.Info("Verifying claim for @%s...", key)
-					vr, err := client.VerifyClaim(ctx, para.Text, key, passages, bibStr)
+					rawJSON, err := client.Call(ctx, prompt)
 					if err != nil {
 						logx.Error("LLM claim verification failed for @%s: %v", key, err)
 						continue
 					}
+					vr, err := llm.ParseVerificationResult(rawJSON)
+					if err != nil {
+						logx.Error("Failed to parse verification result for @%s: %v", key, err)
+						continue
+					}
 
-					// Save cache
 					llmCache[cacheKey] = cache.LLMCacheEntry{
 						Status:    vr.Status,
 						Reasoning: vr.Reasoning,
@@ -211,7 +297,14 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 			}
 		} else {
 			// Uncited claim detection mode
-			cacheKey := cache.ComputeLLMKey(para.Text, "uncited", "")
+			prompt, err := llm.RenderUncitedPrompt(llm.UncitedPromptData{
+				Paragraph: para.Text,
+			})
+			if err != nil {
+				logx.Error("Failed to render uncited prompt: %v", err)
+				continue
+			}
+			cacheKey := cache.ComputeLLMKey(prompt, client.ModelName())
 			if val, cached := llmCache[cacheKey]; cached {
 				if val.Status == "uncited-claims" {
 					for _, passage := range val.Passages {
@@ -224,13 +317,17 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 				}
 			} else {
 				logx.Info("Analyzing paragraph for uncited claims...")
-				claims, err := client.DetectUncitedClaims(ctx, para.Text)
+				rawJSON, err := client.Call(ctx, prompt)
 				if err != nil {
 					logx.Error("LLM uncited claim detection failed: %v", err)
 					continue
 				}
+				claims, err := llm.ParseUncitedClaims(rawJSON)
+				if err != nil {
+					logx.Error("Failed to parse uncited claims: %v", err)
+					continue
+				}
 
-				// Save cache
 				var passages []string
 				reasoning := ""
 				status := "no-uncited-claims"
@@ -260,57 +357,22 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 	return res, nil
 }
 
-// extractBlockText compiles raw text from Goldmark AST lines.
-func extractBlockText(n gast.Node, source []byte) string {
-	var sb strings.Builder
-	for i := 0; i < n.Lines().Len(); i++ {
-		line := n.Lines().At(i)
-		sb.Write(line.Value(source))
-	}
-	return strings.TrimSpace(sb.String())
-}
-
 // ExtractManuscriptParagraphs parses the Markdown content and extracts paragraphs/list items.
 func ExtractManuscriptParagraphs(mdContent string) []ManuscriptParagraph {
-	source := []byte(mdContent)
-	doc := goldmark.DefaultParser().Parse(gtext.NewReader(source))
-	var paragraphs []ManuscriptParagraph
-
-	_ = gast.Walk(doc, func(n gast.Node, entering bool) (gast.WalkStatus, error) {
-		if !entering {
-			return gast.WalkContinue, nil
+	chunks := chunk.Split(mdContent, 5)
+	paragraphs := make([]ManuscriptParagraph, len(chunks))
+	for i, c := range chunks {
+		paragraphs[i] = ManuscriptParagraph{
+			Text:      c,
+			Citations: citations.ExtractCitationsFromText(c),
 		}
-
-		if n.Kind() == gast.KindParagraph || n.Kind() == gast.KindTextBlock {
-			text := extractBlockText(n, source)
-			if text != "" {
-				paragraphs = append(paragraphs, ManuscriptParagraph{
-					Text:      text,
-					Citations: citations.ExtractCitationsFromText(text),
-				})
-			}
-			return gast.WalkSkipChildren, nil
-		}
-
-		return gast.WalkContinue, nil
-	})
-
+	}
 	return paragraphs
 }
 
-// SplitIntoChunks splits text by double-newlines into paragraph-sized chunks.
+// SplitIntoChunks splits text into paragraph-sized chunks for BM25 indexing.
 func SplitIntoChunks(text string) []string {
-	normalized := strings.ReplaceAll(text, "\r\n", "\n")
-	parts := strings.Split(normalized, "\n\n")
-	var chunks []string
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			cleaned := strings.Join(strings.Fields(trimmed), " ")
-			chunks = append(chunks, cleaned)
-		}
-	}
-	return chunks
+	return chunk.Split(text, 10)
 }
 
 // buildPDFMap scans the literature directory to match citation keys to PDFs and updates the bibMap.

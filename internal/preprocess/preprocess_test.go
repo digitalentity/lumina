@@ -160,3 +160,85 @@ acronyms:
 		t.Error("expected to be stale after references.bib modification")
 	}
 }
+
+func TestPreprocessAssemblesCSLAndBibliography(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "lumina-preprocess-assemble-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create root directory and parent directories for external CSL/Bib files
+	msRoot := filepath.Join(tempDir, "manuscript_root")
+	cslDir := filepath.Join(tempDir, "csl")
+	bibDir := filepath.Join(tempDir, "bib")
+
+	if err := os.MkdirAll(msRoot, 0755); err != nil {
+		t.Fatalf("mkdir msRoot: %v", err)
+	}
+	if err := os.MkdirAll(cslDir, 0755); err != nil {
+		t.Fatalf("mkdir cslDir: %v", err)
+	}
+	if err := os.MkdirAll(bibDir, 0755); err != nil {
+		t.Fatalf("mkdir bibDir: %v", err)
+	}
+
+	// Write external files
+	cslFile := filepath.Join(cslDir, "harvard-cite.csl")
+	if err := os.WriteFile(cslFile, []byte("csl content"), 0644); err != nil {
+		t.Fatalf("write csl: %v", err)
+	}
+	bibFile := filepath.Join(bibDir, "references.bib")
+	if err := os.WriteFile(bibFile, []byte("bib content"), 0644); err != nil {
+		t.Fatalf("write bib: %v", err)
+	}
+
+	mPath := filepath.Join(msRoot, "manuscript.md")
+	if err := os.WriteFile(mPath, []byte("# Title"), 0644); err != nil {
+		t.Fatalf("write manuscript: %v", err)
+	}
+
+	rawMeta := map[string]any{
+		"csl":          "../csl/harvard-cite.csl",
+		"bibliography": "../bib/references.bib",
+	}
+
+	ms := &manuscript.Manuscript{
+		Root:      msRoot,
+		Source:    mPath,
+		LuminaDir: filepath.Join(msRoot, ".lumina"),
+		BuildDir:  filepath.Join(msRoot, "_build"),
+		Stem:      "manuscript",
+		Config:    config.Config{},
+		RawMeta:   rawMeta,
+		Runner:    &MockRunner{},
+	}
+
+	if err := Run(ms, Options{}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	// Verify files copied to .lumina/build/
+	copiedCsl := filepath.Join(ms.LuminaBuildDir(), "harvard-cite.csl")
+	if _, err := os.Stat(copiedCsl); err != nil {
+		t.Errorf("expected copied CSL at %s, got err: %v", copiedCsl, err)
+	}
+	copiedBib := filepath.Join(ms.LuminaBuildDir(), "references.bib")
+	if _, err := os.Stat(copiedBib); err != nil {
+		t.Errorf("expected copied bibliography at %s, got err: %v", copiedBib, err)
+	}
+
+	// Verify paths rewritten in intermediate metadata.yaml
+	metaBytes, err := os.ReadFile(ms.IntermediateMeta())
+	if err != nil {
+		t.Fatalf("failed to read metadata: %v", err)
+	}
+
+	metaStr := string(metaBytes)
+	if !bytes.Contains(metaBytes, []byte("csl: harvard-cite.csl")) {
+		t.Errorf("expected metadata.yaml to contain local CSL filename, got: %s", metaStr)
+	}
+	if !bytes.Contains(metaBytes, []byte("bibliography: references.bib")) {
+		t.Errorf("expected metadata.yaml to contain local bibliography filename, got: %s", metaStr)
+	}
+}

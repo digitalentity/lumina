@@ -7,68 +7,45 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 )
 
+// GeminiClient calls the Gemini generative language API.
 type GeminiClient struct {
 	APIKey      string
 	Model       string
 	Temperature float64
 }
 
-type geminiPart struct {
-	Text string `json:"text"`
-}
+func (g *GeminiClient) ModelName() string { return g.Model }
 
-type geminiContent struct {
-	Parts []geminiPart `json:"parts"`
-}
+// Call sends prompt to the Gemini API and returns the raw response text.
+func (g *GeminiClient) Call(ctx context.Context, prompt string) (string, error) {
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
+		g.Model,
+		g.APIKey,
+	)
 
-type geminiConfig struct {
-	Temperature      float64 `json:"temperature"`
-	ResponseMimeType string  `json:"responseMimeType"`
-}
-
-type geminiRequest struct {
-	Contents         []geminiContent `json:"contents"`
-	GenerationConfig geminiConfig    `json:"generationConfig"`
-}
-
-type geminiResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
-}
-
-func cleanJSON(s string) string {
-	s = strings.TrimSpace(s)
-	// Strip markdown blocks if present
-	if strings.HasPrefix(s, "```json") {
-		s = strings.TrimPrefix(s, "```json")
-		s = strings.TrimSuffix(s, "```")
-	} else if strings.HasPrefix(s, "```") {
-		s = strings.TrimPrefix(s, "```")
-		s = strings.TrimSuffix(s, "```")
+	type part struct {
+		Text string `json:"text"`
 	}
-	return strings.TrimSpace(s)
-}
+	type content struct {
+		Parts []part `json:"parts"`
+	}
+	type genConfig struct {
+		Temperature      float64 `json:"temperature"`
+		ResponseMimeType string  `json:"responseMimeType"`
+	}
+	type request struct {
+		Contents         []content `json:"contents"`
+		GenerationConfig genConfig `json:"generationConfig"`
+	}
 
-func (g *GeminiClient) callGemini(ctx context.Context, prompt string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", g.Model, g.APIKey)
-
-	reqBody := geminiRequest{
-		Contents: []geminiContent{
-			{
-				Parts: []geminiPart{
-					{Text: prompt},
-				},
-			},
+	reqBody := request{
+		Contents: []content{
+			{Parts: []part{{Text: prompt}}},
 		},
-		GenerationConfig: geminiConfig{
+		GenerationConfig: genConfig{
 			Temperature:      g.Temperature,
 			ResponseMimeType: "application/json",
 		},
@@ -96,7 +73,15 @@ func (g *GeminiClient) callGemini(ctx context.Context, prompt string) (string, e
 		return "", fmt.Errorf("gemini API call failed with status %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	var geminiResp geminiResponse
+	var geminiResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
 		return "", err
 	}
@@ -106,51 +91,4 @@ func (g *GeminiClient) callGemini(ctx context.Context, prompt string) (string, e
 	}
 
 	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
-}
-
-func (g *GeminiClient) VerifyClaim(ctx context.Context, paragraph string, citationKey string, passages []string, bibtex string) (*VerificationResult, error) {
-	prompt, err := RenderVerifyPrompt(VerifyPromptData{
-		Paragraph:   paragraph,
-		CitationKey: citationKey,
-		Bibtex:      bibtex,
-		Passages:    passages,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to render verify prompt: %w", err)
-	}
-
-	rawJSON, err := g.callGemini(ctx, prompt)
-	if err != nil {
-		return nil, err
-	}
-
-	cleaned := cleanJSON(rawJSON)
-	var res VerificationResult
-	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
-		return nil, fmt.Errorf("failed to parse verification response JSON: %w (raw: %s)", err, rawJSON)
-	}
-
-	return &res, nil
-}
-
-func (g *GeminiClient) DetectUncitedClaims(ctx context.Context, paragraph string) ([]UncitedClaim, error) {
-	prompt, err := RenderUncitedPrompt(UncitedPromptData{
-		Paragraph: paragraph,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to render uncited prompt: %w", err)
-	}
-
-	rawJSON, err := g.callGemini(ctx, prompt)
-	if err != nil {
-		return nil, err
-	}
-
-	cleaned := cleanJSON(rawJSON)
-	var res UncitedResponse
-	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
-		return nil, fmt.Errorf("failed to parse uncited claims response JSON: %w (raw: %s)", err, rawJSON)
-	}
-
-	return res.UncitedClaims, nil
 }

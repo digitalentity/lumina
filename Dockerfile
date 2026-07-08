@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -72,10 +72,12 @@ RUN apt-get update && apt-get install -y python3 python3-pip \
 # Install Vale (v3.15.1)
 RUN curl -sfL https://github.com/errata-ai/vale/releases/download/v3.15.1/vale_3.15.1_Linux_64-bit.tar.gz | tar -xz -C /usr/local/bin vale
 
-# Configure Puppeteer to use a global cache directory readable by all users
-ENV PUPPETEER_CACHE_DIR=/usr/local/share/puppeteer
+# Set HOME to match the runtime value passed by dockerCmd (-e HOME=/tmp) so that
+# @pspdfkit/pdf-to-markdown caches its native binary to the same path at build
+# time that the wrapper script will look for it at runtime.
+ENV HOME=/tmp
 
 # Pre-install global npm packages to speed up formatting and mermaid rendering
-RUN npm install -g prettier @mermaid-js/mermaid-cli@11.16.0
+RUN npm install -g prettier @mermaid-js/mermaid-cli@11.16.0 @pspdfkit/pdf-to-markdown
 
 WORKDIR /workspace

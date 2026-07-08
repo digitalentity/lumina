@@ -15,6 +15,7 @@ import (
 type LitCacheEntry struct {
 	BibtexKey   string   `yaml:"bibtex_key"`
 	BibtexEntry string   `yaml:"bibtex_entry"`
+	FullText    string   `yaml:"full_text"`
 	Chunks      []string `yaml:"chunks"`
 }
 
@@ -96,10 +97,12 @@ type LLMCacheEntry struct {
 // LLMCache holds map from request hashes to cached verification results.
 type LLMCache map[string]LLMCacheEntry
 
-// ComputeLLMKey calculates the SHA-256 hash of the input parameters to serve as a cache key.
-func ComputeLLMKey(paragraph, pdfHash, bibtex string) string {
+// ComputeLLMKey calculates the SHA-256 hash of the rendered prompt and model
+// name to serve as a cache key. Keying on the final prompt ensures any change
+// to templates, passages, or the model selection automatically busts the cache.
+func ComputeLLMKey(prompt, model string) string {
 	h := sha256.New()
-	_, _ = h.Write([]byte(paragraph + "|" + pdfHash + "|" + bibtex))
+	_, _ = h.Write([]byte(prompt + "|" + model))
 	return hex.EncodeToString(h.Sum(nil))
 }
 

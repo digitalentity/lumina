@@ -1,14 +1,151 @@
 package aicheck
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"lumina/internal/aicheck/cache"
 	"lumina/internal/bibtex"
+	"lumina/internal/config"
+	"lumina/internal/manuscript"
+	"lumina/internal/runner"
 )
+
+// mockRunner satisfies runner.Runner for tests that need controlled PDF extraction.
+type mockRunner struct {
+	captureFunc      func(tool string, args []string, cwd string) ([]byte, error)
+	checkPresentFunc func(tool string) error
+}
+
+func (m *mockRunner) Run(tool string, args []string, cwd string) error { return nil }
+
+func (m *mockRunner) Capture(tool string, args []string, cwd string) ([]byte, error) {
+	if m.captureFunc != nil {
+		return m.captureFunc(tool, args, cwd)
+	}
+	return nil, nil
+}
+
+func (m *mockRunner) CheckPresent(tool string) error {
+	if m.checkPresentFunc != nil {
+		return m.checkPresentFunc(tool)
+	}
+	return nil
+}
+
+// makeTestManuscript builds a minimal Manuscript struct backed by a temp directory.
+func makeTestManuscript(t *testing.T, r runner.Runner) (*manuscript.Manuscript, string) {
+	t.Helper()
+	root, err := os.MkdirTemp("", "lumina-index-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(root) })
+	return &manuscript.Manuscript{
+		Root:   root,
+		Runner: r,
+		Config: config.Config{},
+	}, root
+}
+
+func TestIndexLiterature(t *testing.T) {
+	const pdfContent = "First paragraph of the paper that has enough words to easily pass the filter.\n\nSecond paragraph of the paper that also has enough words to pass the filter.\n"
+	const bibContent = "@article{smith2024,\n  title = {Warp Drive},\n  author = {John Smith},\n}"
+
+	newRunner := func() runner.Runner {
+		return &mockRunner{
+			checkPresentFunc: func(tool string) error { return nil },
+			captureFunc: func(tool string, args []string, cwd string) ([]byte, error) {
+				return []byte(pdfContent), nil
+			},
+		}
+	}
+
+	t.Run("indexes pdfs and writes cache", func(t *testing.T) {
+		ms, root := makeTestManuscript(t, newRunner())
+
+		litDir := filepath.Join(root, "literature")
+		if err := os.MkdirAll(litDir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(litDir, "paper.bib"), []byte(bibContent), 0644); err != nil {
+			t.Fatalf("write bib: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(litDir, "paper.pdf"), []byte("mock pdf bytes"), 0644); err != nil {
+			t.Fatalf("write pdf: %v", err)
+		}
+
+		if err := IndexLiterature(context.Background(), ms, false); err != nil {
+			t.Fatalf("IndexLiterature error: %v", err)
+		}
+
+		hash, err := cache.GetFileHash(filepath.Join(litDir, "paper.pdf"))
+		if err != nil {
+			t.Fatalf("hash error: %v", err)
+		}
+		lCache, err := cache.GetLitCache(root, hash)
+		if err != nil {
+			t.Fatalf("expected cache entry, got: %v", err)
+		}
+		if lCache.BibtexKey != "smith2024" {
+			t.Errorf("expected BibtexKey \"smith2024\", got %q", lCache.BibtexKey)
+		}
+		if lCache.FullText != pdfContent {
+			t.Errorf("expected FullText %q, got %q", pdfContent, lCache.FullText)
+		}
+		expectedChunks := []string{
+			"First paragraph of the paper that has enough words to easily pass the filter.",
+			"Second paragraph of the paper that also has enough words to pass the filter.",
+		}
+		if !reflect.DeepEqual(lCache.Chunks, expectedChunks) {
+			t.Errorf("expected chunks %v, got %v", expectedChunks, lCache.Chunks)
+		}
+	})
+
+	t.Run("skips already-cached pdfs", func(t *testing.T) {
+		calls := 0
+		r := &mockRunner{
+			checkPresentFunc: func(tool string) error { return nil },
+			captureFunc: func(tool string, args []string, cwd string) ([]byte, error) {
+				calls++
+				return []byte(pdfContent), nil
+			},
+		}
+		ms, root := makeTestManuscript(t, r)
+
+		litDir := filepath.Join(root, "literature")
+		if err := os.MkdirAll(litDir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(litDir, "paper.bib"), []byte(bibContent), 0644); err != nil {
+			t.Fatalf("write bib: %v", err)
+		}
+		pdfPath := filepath.Join(litDir, "paper.pdf")
+		if err := os.WriteFile(pdfPath, []byte("mock pdf bytes"), 0644); err != nil {
+			t.Fatalf("write pdf: %v", err)
+		}
+
+		// First run — populates cache.
+		if err := IndexLiterature(context.Background(), ms, false); err != nil {
+			t.Fatalf("first IndexLiterature: %v", err)
+		}
+		if calls != 1 {
+			t.Fatalf("expected 1 extraction call on first run, got %d", calls)
+		}
+
+		// Second run — cache is fresh, extraction should not happen.
+		if err := IndexLiterature(context.Background(), ms, false); err != nil {
+			t.Fatalf("second IndexLiterature: %v", err)
+		}
+		if calls != 1 {
+			t.Errorf("expected no additional extraction calls on second run, got %d total", calls)
+		}
+	})
+}
 
 func TestExtractManuscriptParagraphs(t *testing.T) {
 	md := `
@@ -19,7 +156,7 @@ This is the first paragraph with a citation [@smith2024].
 Here is another paragraph with multiple citations: @jones2023 and [@doe2022].
 
 * A bullet list item with a citation @bullet2025
-* Another bullet item without citation.
+* Another bullet item without citation but with enough words to pass the filter.
 
 ` + "```go\n// Code block with @should_be_ignored\n```" + `
 `
@@ -59,25 +196,25 @@ Here is another paragraph with multiple citations: @jones2023 and [@doe2022].
 
 func TestSplitIntoChunks(t *testing.T) {
 	pdfText := `
-First paragraph of the paper.
+First paragraph of the paper that has enough words to easily exceed the ten word limit.
 It spans multiple lines.
 
-Second paragraph of the paper.
+Second paragraph of the paper that also has enough words to easily pass the filter.
 
-Third paragraph.
+Third paragraph is too short.
 `
 	chunks := SplitIntoChunks(pdfText)
 
-	if len(chunks) != 3 {
-		t.Fatalf("expected 3 chunks, got %d", len(chunks))
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 chunks, got %d: %v", len(chunks), chunks)
 	}
 
-	expectedFirst := "First paragraph of the paper. It spans multiple lines."
+	expectedFirst := "First paragraph of the paper that has enough words to easily exceed the ten word limit. It spans multiple lines."
 	if chunks[0] != expectedFirst {
 		t.Errorf("expected first chunk to be normalized, got %q", chunks[0])
 	}
 
-	if chunks[1] != "Second paragraph of the paper." {
+	if chunks[1] != "Second paragraph of the paper that also has enough words to easily pass the filter." {
 		t.Errorf("got %q", chunks[1])
 	}
 }

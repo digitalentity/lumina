@@ -92,10 +92,9 @@ func TestLLMCache(t *testing.T) {
 	defer os.RemoveAll(root)
 
 	para := "Manuscript claim context."
-	pdfHash := "hash123"
-	bibtex := "@article{smith2024}"
+	model := "gemini-2.5-flash"
 
-	key := ComputeLLMKey(para, pdfHash, bibtex)
+	key := ComputeLLMKey(para, model)
 	if key == "" {
 		t.Fatal("expected computed key to be non-empty")
 	}

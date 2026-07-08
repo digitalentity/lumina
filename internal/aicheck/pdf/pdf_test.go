@@ -33,19 +33,19 @@ func TestExtractText(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		mr := &mockRunner{
 			checkPresentFunc: func(tool string) error {
-				if tool != "pdftotext" {
+				if tool != "pdf-to-markdown" {
 					return errors.New("unexpected tool check")
 				}
 				return nil
 			},
 			captureFunc: func(tool string, args []string, cwd string) ([]byte, error) {
-				if tool != "pdftotext" {
+				if tool != "pdf-to-markdown" {
 					return nil, errors.New("unexpected tool call")
 				}
-				if len(args) != 2 || args[1] != "-" {
+				if len(args) != 1 {
 					return nil, errors.New("unexpected arguments")
 				}
-				return []byte("Hello extracted text"), nil
+				return []byte("# Hello extracted markdown"), nil
 			},
 		}
 
@@ -54,12 +54,12 @@ func TestExtractText(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if text != "Hello extracted text" {
-			t.Errorf("expected 'Hello extracted text', got %q", text)
+		if text != "# Hello extracted markdown" {
+			t.Errorf("expected '# Hello extracted markdown', got %q", text)
 		}
 	})
 
-	t.Run("pdftotext missing", func(t *testing.T) {
+	t.Run("pdf-to-markdown missing", func(t *testing.T) {
 		mr := &mockRunner{
 			checkPresentFunc: func(tool string) error {
 				return errors.New("not found")

@@ -32,15 +32,15 @@ var zipCmd = &cobra.Command{
 			}
 		}
 
-		// 2. Stage manuscript.tex inside .lumina/
+		// 2. Stage manuscript.tex inside .lumina/build
 		texPath := ms.BuildPath("tex")
-		destTex := filepath.Join(ms.LuminaDir, "manuscript.tex")
+		destTex := filepath.Join(ms.LuminaBuildDir(), "manuscript.tex")
 		if err := copyFile(texPath, destTex); err != nil {
 			return fmt.Errorf("failed to stage TeX file: %w", err)
 		}
 
-		// 3. Ensure references.bib exists in .lumina/
-		destBib := filepath.Join(ms.LuminaDir, "references.bib")
+		// 3. Ensure references.bib exists in .lumina/build
+		destBib := filepath.Join(ms.LuminaBuildDir(), "references.bib")
 		if _, err := os.Stat(destBib); os.IsNotExist(err) {
 			srcBib := filepath.Join(ms.Root, "references.bib")
 			_ = copyFile(srcBib, destBib)
@@ -65,7 +65,7 @@ var zipCmd = &cobra.Command{
 		}
 
 		logx.Step("assembling ZIP submission archive...")
-		if err := ms.Runner.Run("zip", zipArgs, ms.LuminaDir); err != nil {
+		if err := ms.Runner.Run("zip", zipArgs, ms.LuminaBuildDir()); err != nil {
 			return err
 		}
 

@@ -53,7 +53,7 @@ func TestLoad(t *testing.T) {
 			t.Errorf("expected source %s, got %s", expectedSource, ms.Source)
 		}
 
-		expectedIntermediate := filepath.Join(tempDir, ".lumina", "manuscript.md")
+		expectedIntermediate := filepath.Join(tempDir, ".lumina", "build", "manuscript.md")
 		if ms.IntermediateSource() != expectedIntermediate {
 			t.Errorf("expected intermediate source %s, got %s", expectedIntermediate, ms.IntermediateSource())
 		}

@@ -36,13 +36,14 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return nil
 	}
 
-	// 1. Ensure .lumina/ and .lumina/figures/ exist
-	if err := os.MkdirAll(ms.LuminaDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .lumina directory: %w", err)
+	// 1. Ensure .lumina/build/ and .lumina/build/figures/ exist
+	buildDir := ms.LuminaBuildDir()
+	if err := os.MkdirAll(buildDir, 0755); err != nil {
+		return fmt.Errorf("failed to create intermediate build directory: %w", err)
 	}
-	luminaFiguresDir := filepath.Join(ms.LuminaDir, "figures")
+	luminaFiguresDir := filepath.Join(buildDir, "figures")
 	if err := os.MkdirAll(luminaFiguresDir, 0755); err != nil {
-		return fmt.Errorf("failed to create .lumina/figures directory: %w", err)
+		return fmt.Errorf("failed to create intermediate figures directory: %w", err)
 	}
 
 	// 2. Read source manuscript.md
@@ -59,7 +60,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		_, statErr := os.Stat(mmd.path)
 		if os.IsNotExist(statErr) || opts.Force {
 			logx.Step("rendering Mermaid diagram %s...", filepath.Base(mmd.path))
-			if err := RenderMermaid(ms.Runner, mmd.code, mmd.path, ms.LuminaDir); err != nil {
+			if err := RenderMermaid(ms.Runner, mmd.code, mmd.path, buildDir); err != nil {
 				return fmt.Errorf("failed to render Mermaid diagram: %w", err)
 			}
 		} else {
@@ -96,7 +97,63 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return fmt.Errorf("failed to write preprocessed manuscript: %w", err)
 	}
 
-	// 6. Write clean metadata.yaml to .lumina/metadata.yaml
+	// 5.5 Copy referenced CSL and bibliography files to .lumina/build/ and make paths local
+	if cslVal, ok := ms.RawMeta["csl"]; ok {
+		if cslPath, ok := cslVal.(string); ok && cslPath != "" {
+			srcPath := cslPath
+			if !filepath.IsAbs(cslPath) {
+				srcPath = filepath.Join(ms.Root, cslPath)
+			}
+			cslFilename := filepath.Base(cslPath)
+			destPath := filepath.Join(ms.LuminaBuildDir(), cslFilename)
+			logx.Info("Copying CSL style sheet %s to %s...", srcPath, destPath)
+			if err := copyFile(srcPath, destPath); err != nil {
+				return fmt.Errorf("failed to copy CSL stylesheet: %w", err)
+			}
+			ms.RawMeta["csl"] = cslFilename
+		}
+	}
+
+	if bibVal, ok := ms.RawMeta["bibliography"]; ok {
+		switch v := bibVal.(type) {
+		case string:
+			if v != "" {
+				srcPath := v
+				if !filepath.IsAbs(v) {
+					srcPath = filepath.Join(ms.Root, v)
+				}
+				bibFilename := filepath.Base(v)
+				destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
+				logx.Info("Copying bibliography %s to %s...", srcPath, destPath)
+				if err := copyFile(srcPath, destPath); err != nil && !os.IsNotExist(err) {
+					return fmt.Errorf("failed to copy bibliography: %w", err)
+				}
+				ms.RawMeta["bibliography"] = bibFilename
+			}
+		case []any:
+			newBibs := make([]any, len(v))
+			for i, item := range v {
+				if str, ok := item.(string); ok && str != "" {
+					srcPath := str
+					if !filepath.IsAbs(str) {
+						srcPath = filepath.Join(ms.Root, str)
+					}
+					bibFilename := filepath.Base(str)
+					destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
+					logx.Info("Copying bibliography %s to %s...", srcPath, destPath)
+					if err := copyFile(srcPath, destPath); err != nil && !os.IsNotExist(err) {
+						return fmt.Errorf("failed to copy bibliography: %w", err)
+					}
+					newBibs[i] = bibFilename
+				} else {
+					newBibs[i] = item
+				}
+			}
+			ms.RawMeta["bibliography"] = newBibs
+		}
+	}
+
+	// 6. Write clean metadata.yaml to .lumina/build/metadata.yaml
 	metaContent, err := yaml.Marshal(ms.RawMeta)
 	if err != nil {
 		return fmt.Errorf("failed to marshal clean metadata: %w", err)
@@ -106,9 +163,9 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return fmt.Errorf("failed to write clean metadata: %w", err)
 	}
 
-	// 7. Copy references.bib to .lumina/references.bib
+	// 7. Copy references.bib to .lumina/build/references.bib
 	bibSrc := filepath.Join(ms.Root, "references.bib")
-	bibDest := filepath.Join(ms.LuminaDir, "references.bib")
+	bibDest := filepath.Join(ms.LuminaBuildDir(), "references.bib")
 	if err := copyFile(bibSrc, bibDest); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to copy references.bib: %w", err)
 	}

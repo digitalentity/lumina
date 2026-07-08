@@ -2,8 +2,10 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"lumina/internal/config"
 )
@@ -28,11 +30,11 @@ type UncitedResponse struct {
 
 // Client defines the interface for contacting LLM providers.
 type Client interface {
-	// VerifyClaim checks if literature chunks support a manuscript paragraph claim.
-	VerifyClaim(ctx context.Context, paragraph string, citationKey string, passages []string, bibtex string) (*VerificationResult, error)
+	// ModelName returns the model identifier used by this client.
+	ModelName() string
 
-	// DetectUncitedClaims analyzes a paragraph to find claims needing citation.
-	DetectUncitedClaims(ctx context.Context, paragraph string) ([]UncitedClaim, error)
+	// Call sends a pre-rendered prompt and returns the raw JSON response string.
+	Call(ctx context.Context, prompt string) (string, error)
 }
 
 // NewClient returns an LLM client based on the parsed lumina config.
@@ -74,4 +76,37 @@ func NewClient(cfg config.AIConfig) (Client, error) {
 	default:
 		return nil, fmt.Errorf("unsupported AI provider: %q (must be 'gemini' or 'openai')", cfg.Provider)
 	}
+}
+
+// ParseVerificationResult unmarshals a raw JSON string into a VerificationResult.
+func ParseVerificationResult(raw string) (*VerificationResult, error) {
+	cleaned := cleanJSON(raw)
+	var res VerificationResult
+	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
+		return nil, fmt.Errorf("failed to parse verification response JSON: %w (raw: %s)", err, raw)
+	}
+	return &res, nil
+}
+
+// ParseUncitedClaims unmarshals a raw JSON string into a slice of UncitedClaim.
+func ParseUncitedClaims(raw string) ([]UncitedClaim, error) {
+	cleaned := cleanJSON(raw)
+	var res UncitedResponse
+	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
+		return nil, fmt.Errorf("failed to parse uncited claims response JSON: %w (raw: %s)", err, raw)
+	}
+	return res.UncitedClaims, nil
+}
+
+// cleanJSON strips optional markdown fences from LLM JSON responses.
+func cleanJSON(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "```json") {
+		s = strings.TrimPrefix(s, "```json")
+		s = strings.TrimSuffix(s, "```")
+	} else if strings.HasPrefix(s, "```") {
+		s = strings.TrimPrefix(s, "```")
+		s = strings.TrimSuffix(s, "```")
+	}
+	return strings.TrimSpace(s)
 }

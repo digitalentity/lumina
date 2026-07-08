@@ -56,7 +56,7 @@ func (inv *Invocation) Run(ms *manuscript.Manuscript) error {
 	}
 	args = append(args, input)
 
-	return ms.Runner.Run("pandoc", args, ms.LuminaDir)
+	return ms.Runner.Run("pandoc", args, ms.LuminaBuildDir())
 }
 
 // CheckPresent verifies that the required tools are present using the Runner.
