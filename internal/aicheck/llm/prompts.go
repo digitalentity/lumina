@@ -27,7 +27,7 @@ type VerifyPromptData struct {
 
 // UncitedPromptData holds properties to compile the uncited claims prompt.
 type UncitedPromptData struct {
-	Paragraph string
+	Manuscript string
 }
 
 // RenderVerifyPrompt renders the prompt template for citation verification.

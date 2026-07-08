@@ -21,6 +21,7 @@ type VerificationResult struct {
 type UncitedClaim struct {
 	Assertion string `json:"assertion"`
 	Reasoning string `json:"reasoning"`
+	Paragraph string `json:"paragraph"`
 }
 
 // UncitedResponse is the wrapper for the uncited claims JSON response.

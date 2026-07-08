@@ -87,11 +87,9 @@ func ClearCache(root string) error {
 	return nil
 }
 
-// LLMCacheEntry represents a cached LLM verification result.
+// LLMCacheEntry represents a cached LLM response.
 type LLMCacheEntry struct {
-	Status    string   `json:"status"`
-	Reasoning string   `json:"reasoning"`
-	Passages  []string `json:"passages"`
+	Response string `json:"response"`
 }
 
 // LLMCache holds map from request hashes to cached verification results.

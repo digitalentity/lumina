@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -60,7 +61,7 @@ func TestParseVerificationResult(t *testing.T) {
 }
 
 func TestParseUncitedClaims(t *testing.T) {
-	raw := `{"uncited_claims":[{"assertion":"Warp drives exist.","reasoning":"No citation."}]}`
+	raw := `{"uncited_claims":[{"assertion":"Warp drives exist.","reasoning":"No citation.","paragraph":"Indeed warp drives exist."}]}`
 	claims, err := ParseUncitedClaims(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -70,6 +71,9 @@ func TestParseUncitedClaims(t *testing.T) {
 	}
 	if claims[0].Assertion != "Warp drives exist." {
 		t.Errorf("unexpected assertion: %q", claims[0].Assertion)
+	}
+	if claims[0].Paragraph != "Indeed warp drives exist." {
+		t.Errorf("unexpected paragraph context: %q", claims[0].Paragraph)
 	}
 }
 
@@ -165,7 +169,7 @@ func TestRenderPrompts(t *testing.T) {
 
 	t.Run("uncited prompt template", func(t *testing.T) {
 		data := UncitedPromptData{
-			Paragraph: "A paragraph that lacks citations.",
+			Manuscript: "A manuscript that lacks citations.",
 		}
 
 		prompt, err := RenderUncitedPrompt(data)
@@ -173,8 +177,76 @@ func TestRenderPrompts(t *testing.T) {
 			t.Fatalf("failed to render: %v", err)
 		}
 
-		if !strings.Contains(prompt, "A paragraph that lacks citations.") {
-			t.Errorf("rendered prompt missing paragraph text")
+		if !strings.Contains(prompt, "A manuscript that lacks citations.") {
+			t.Errorf("rendered prompt missing manuscript text")
 		}
 	})
 }
+
+type mockClient struct {
+	modelName string
+	calls     int
+	response  string
+	err       error
+}
+
+func (m *mockClient) ModelName() string {
+	return m.modelName
+}
+
+func (m *mockClient) Call(ctx context.Context, prompt string) (string, error) {
+	m.calls++
+	return m.response, m.err
+}
+
+func TestCachingClient(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lumina-llm-cache-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	base := &mockClient{
+		modelName: "test-model",
+		response:  `{"test": "response"}`,
+	}
+
+	client, err := NewCachingClient(base, tmpDir)
+	if err != nil {
+		t.Fatalf("NewCachingClient error: %v", err)
+	}
+
+	prompt := "Hello LLM"
+
+	// 1. Call 1 (cache miss)
+	if client.IsCached(prompt) {
+		t.Errorf("expected IsCached to be false initially")
+	}
+
+	res, err := client.Call(context.Background(), prompt)
+	if err != nil {
+		t.Fatalf("Call error: %v", err)
+	}
+	if res != `{"test": "response"}` {
+		t.Errorf("unexpected response: %q", res)
+	}
+	if base.calls != 1 {
+		t.Errorf("expected 1 base call, got %d", base.calls)
+	}
+	if !client.IsCached(prompt) {
+		t.Errorf("expected IsCached to be true after call")
+	}
+
+	// 2. Call 2 (cache hit)
+	res, err = client.Call(context.Background(), prompt)
+	if err != nil {
+		t.Fatalf("Call error on second run: %v", err)
+	}
+	if res != `{"test": "response"}` {
+		t.Errorf("unexpected response: %q", res)
+	}
+	if base.calls != 1 {
+		t.Errorf("expected no additional base call, got %d", base.calls)
+	}
+}
+

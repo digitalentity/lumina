@@ -139,19 +139,17 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 		}
 	}
 
-	// 1. Initialize LLM Client
-	client, err := llm.NewClient(ms.Config.AI)
+	// 1. Initialize LLM Client with transparent caching
+	baseClient, err := llm.NewClient(ms.Config.AI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize LLM client: %w", err)
 	}
-
-	// 2. Load LLM Cache
-	llmCache, err := cache.LoadLLMCache(ms.Root)
+	client, err := llm.NewCachingClient(baseClient, ms.Root)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load LLM cache: %w", err)
+		return nil, fmt.Errorf("failed to initialize LLM cache: %w", err)
 	}
 
-	// 3. Load BibTeX entries
+	// 2. Load BibTeX entries
 	bibPath := filepath.Join(ms.Root, "references.bib")
 	entries, err := bibtex.Parse(bibPath)
 	if err != nil && !os.IsNotExist(err) {
@@ -168,7 +166,7 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 		return nil, fmt.Errorf("failed to scan literature directory: %w", err)
 	}
 
-	// 4. Read manuscript paragraphs
+	// 3. Read manuscript paragraphs
 	mdContent, err := os.ReadFile(ms.Source)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read manuscript.md: %w", err)
@@ -257,99 +255,57 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 					logx.Error("Failed to render verify prompt for @%s: %v", key, err)
 					continue
 				}
-				cacheKey := cache.ComputeLLMKey(prompt, client.ModelName())
-				if val, cached := llmCache[cacheKey]; cached {
-					res.VerifyResults = append(res.VerifyResults, VerifyResult{
-						Paragraph:   para.Text,
-						CitationKey: key,
-						Status:      val.Status,
-						Reasoning:   val.Reasoning,
-						Passages:    val.Passages,
-					})
-				} else {
+
+				if !client.IsCached(prompt) {
 					logx.Info("Verifying claim for @%s...", key)
-					rawJSON, err := client.Call(ctx, prompt)
-					if err != nil {
-						logx.Error("LLM claim verification failed for @%s: %v", key, err)
-						continue
-					}
-					vr, err := llm.ParseVerificationResult(rawJSON)
-					if err != nil {
-						logx.Error("Failed to parse verification result for @%s: %v", key, err)
-						continue
-					}
-
-					llmCache[cacheKey] = cache.LLMCacheEntry{
-						Status:    vr.Status,
-						Reasoning: vr.Reasoning,
-						Passages:  vr.Passages,
-					}
-					_ = cache.SaveLLMCache(ms.Root, llmCache)
-
-					res.VerifyResults = append(res.VerifyResults, VerifyResult{
-						Paragraph:   para.Text,
-						CitationKey: key,
-						Status:      vr.Status,
-						Reasoning:   vr.Reasoning,
-						Passages:    vr.Passages,
-					})
 				}
-			}
-		} else {
-			// Uncited claim detection mode
-			prompt, err := llm.RenderUncitedPrompt(llm.UncitedPromptData{
-				Paragraph: para.Text,
-			})
-			if err != nil {
-				logx.Error("Failed to render uncited prompt: %v", err)
-				continue
-			}
-			cacheKey := cache.ComputeLLMKey(prompt, client.ModelName())
-			if val, cached := llmCache[cacheKey]; cached {
-				if val.Status == "uncited-claims" {
-					for _, passage := range val.Passages {
-						res.UncitedClaims = append(res.UncitedClaims, UncitedResult{
-							Paragraph: para.Text,
-							Assertion: passage,
-							Reasoning: val.Reasoning,
-						})
-					}
-				}
-			} else {
-				logx.Info("Analyzing paragraph for uncited claims...")
 				rawJSON, err := client.Call(ctx, prompt)
 				if err != nil {
-					logx.Error("LLM uncited claim detection failed: %v", err)
+					logx.Error("LLM claim verification failed for @%s: %v", key, err)
 					continue
 				}
-				claims, err := llm.ParseUncitedClaims(rawJSON)
+				vr, err := llm.ParseVerificationResult(rawJSON)
 				if err != nil {
-					logx.Error("Failed to parse uncited claims: %v", err)
+					logx.Error("Failed to parse verification result for @%s: %v", key, err)
 					continue
 				}
 
-				var passages []string
-				reasoning := ""
-				status := "no-uncited-claims"
-				if len(claims) > 0 {
-					status = "uncited-claims"
-					reasoning = claims[0].Reasoning // store first or joined
-					for _, c := range claims {
-						passages = append(passages, c.Assertion)
-						res.UncitedClaims = append(res.UncitedClaims, UncitedResult{
-							Paragraph: para.Text,
-							Assertion: c.Assertion,
-							Reasoning: c.Reasoning,
-						})
-					}
-				}
+				res.VerifyResults = append(res.VerifyResults, VerifyResult{
+					Paragraph:   para.Text,
+					CitationKey: key,
+					Status:      vr.Status,
+					Reasoning:   vr.Reasoning,
+					Passages:    vr.Passages,
+				})
+			}
+		}
+	}
 
-				llmCache[cacheKey] = cache.LLMCacheEntry{
-					Status:    status,
-					Reasoning: reasoning,
-					Passages:  passages,
+	// 4. Uncited claim detection mode (manuscript-wide)
+	prompt, err := llm.RenderUncitedPrompt(llm.UncitedPromptData{
+		Manuscript: string(mdContent),
+	})
+	if err != nil {
+		logx.Error("Failed to render uncited prompt: %v", err)
+	} else {
+		if !client.IsCached(prompt) {
+			logx.Info("Analyzing manuscript for uncited claims...")
+		}
+		rawJSON, err := client.Call(ctx, prompt)
+		if err != nil {
+			logx.Error("LLM uncited claim detection failed: %v", err)
+		} else {
+			claims, err := llm.ParseUncitedClaims(rawJSON)
+			if err != nil {
+				logx.Error("Failed to parse uncited claims: %v", err)
+			} else {
+				for _, c := range claims {
+					res.UncitedClaims = append(res.UncitedClaims, UncitedResult{
+						Paragraph: c.Paragraph,
+						Assertion: c.Assertion,
+						Reasoning: c.Reasoning,
+					})
 				}
-				_ = cache.SaveLLMCache(ms.Root, llmCache)
 			}
 		}
 	}

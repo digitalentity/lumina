@@ -1,8 +1,8 @@
-You are an academic writing assistant. Analyze this paragraph of academic prose.
+You are an academic writing assistant. Analyze the entire manuscript of academic prose below.
 
 Identify any statements making specific empirical, factual, historical, or numerical assertions that require supporting citations but lack them. Provide a concise but accurate reasoning why a particular assertion needs citation.
 
-Ignore general transitions, introductory sentences, or sentences that are clearly the author's own analysis of cited statements in the same paragraph.
+Because you have access to the entire manuscript, do not flag statements that are supported or referenced internally (such as descriptions of the authors' own methodology, experimental setup, results, or cross-references to other sections). Only flag statements asserting external facts that require external scientific or academic citation.
 
 You MUST respond ONLY with a JSON object of this structure:
 
@@ -10,12 +10,9 @@ You MUST respond ONLY with a JSON object of this structure:
 {
   "uncited_claims": [
     {
-      "assertion": "The specific claim sentence #1 needing citation",
-      "reasoning": "Explanation of why this assertion requires backing evidence. Be concise but accurate."
-    },
-    {
-      "assertion": "The specific claim sentence #2 needing citation",
-      "reasoning": "Explanation of why this assertion requires backing evidence. Be concise but accurate."
+      "assertion": "The exact sentence from the manuscript making the claim",
+      "reasoning": "Explanation of why this assertion requires backing evidence. Be concise but accurate.",
+      "paragraph": "The exact paragraph or surrounding context containing the assertion to locate it in the manuscript."
     }
   ]
 }
@@ -23,6 +20,6 @@ You MUST respond ONLY with a JSON object of this structure:
 
 ---
 
-Paragraph:
+Manuscript:
 
-"{{.Paragraph}}"
+"{{.Manuscript}}"

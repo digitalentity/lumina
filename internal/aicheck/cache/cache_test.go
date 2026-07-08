@@ -110,9 +110,7 @@ func TestLLMCache(t *testing.T) {
 
 	// 2. Add entry and save
 	entry := LLMCacheEntry{
-		Status:    "supported",
-		Reasoning: "It is supported.",
-		Passages:  []string{"supporting passage"},
+		Response: `{"status": "supported", "reasoning": "It is supported.", "passages": ["supporting passage"]}`,
 	}
 	cache[key] = entry
 
