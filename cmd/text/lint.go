@@ -23,12 +23,36 @@ var lintCmd = &cobra.Command{
 			return err
 		}
 
-		// Run 'vale sync' if styles/ does not exist
+		// Run 'vale sync' if styles/ or default style packages are absent
 		stylesDir := filepath.Join(ms.Root, "styles")
+		writeGoodDir := filepath.Join(stylesDir, "write-good")
+		proselintDir := filepath.Join(stylesDir, "proselint")
+
+		stylesAbsent := false
 		if _, err := os.Stat(stylesDir); os.IsNotExist(err) {
-			logx.Step("styles directory absent, running 'vale sync'...")
+			stylesAbsent = true
+		} else if _, err := os.Stat(writeGoodDir); os.IsNotExist(err) {
+			stylesAbsent = true
+		} else if _, err := os.Stat(proselintDir); os.IsNotExist(err) {
+			stylesAbsent = true
+		}
+
+		if stylesAbsent {
+			logx.Step("styles directory or default packages absent, running 'vale sync'...")
 			if err := ms.Runner.Run("vale", []string{"sync"}, ms.Root); err != nil {
-				return err
+				copied := false
+				if ms.Config.Runner == "docker" {
+					logx.Warn("vale sync failed: %v. Attempting to copy pre-installed styles from docker image...", err)
+					if mkdirErr := ms.Runner.Run("mkdir", []string{"-p", "styles"}, ms.Root); mkdirErr == nil {
+						if cpErr := ms.Runner.Run("cp", []string{"-r", "/styles/.", "styles/"}, ms.Root); cpErr == nil {
+							logx.Success("successfully copied pre-installed styles")
+							copied = true
+						}
+					}
+				}
+				if !copied {
+					return err
+				}
 			}
 		}
 

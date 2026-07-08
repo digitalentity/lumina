@@ -72,6 +72,16 @@ RUN apt-get update && apt-get install -y python3 python3-pip \
 # Install Vale (v3.15.1)
 RUN curl -sfL https://github.com/errata-ai/vale/releases/download/v3.15.1/vale_3.15.1_Linux_64-bit.tar.gz | tar -xz -C /usr/local/bin vale
 
+# Pre-download default Vale packages (write-good, proselint) to /styles
+RUN mkdir -p /styles \
+    && echo 'StylesPath = /styles' > /tmp/vale.ini \
+    && echo 'MinAlertLevel = warning' >> /tmp/vale.ini \
+    && echo 'Packages = write-good, proselint' >> /tmp/vale.ini \
+    && vale --config=/tmp/vale.ini sync \
+    && chmod -R 755 /styles \
+    && rm /tmp/vale.ini
+
+
 # Set HOME to match the runtime value passed by dockerCmd (-e HOME=/tmp) so that
 # @pspdfkit/pdf-to-markdown caches its native binary to the same path at build
 # time that the wrapper script will look for it at runtime.
