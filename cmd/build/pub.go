@@ -37,7 +37,7 @@ var pubCmd = &cobra.Command{
 		logx.Success("gate 1 passed: citation check")
 
 		// 2. Vale linter check
-		stylesDir := filepath.Join(ms.Root, "styles")
+		stylesDir := ms.StylesPath()
 		writeGoodDir := filepath.Join(stylesDir, "write-good")
 		proselintDir := filepath.Join(stylesDir, "proselint")
 
@@ -56,8 +56,12 @@ var pubCmd = &cobra.Command{
 				copied := false
 				if ms.Config.Runner == "docker" {
 					logx.Warn("vale sync failed: %v. Attempting to copy pre-installed styles from docker image...", err)
-					if mkdirErr := ms.Runner.Run("mkdir", []string{"-p", "styles"}, ms.Root); mkdirErr == nil {
-						if cpErr := ms.Runner.Run("cp", []string{"-r", "/styles/.", "styles/"}, ms.Root); cpErr == nil {
+					relStylesDir, err := filepath.Rel(ms.Root, stylesDir)
+					if err != nil {
+						relStylesDir = "styles"
+					}
+					if mkdirErr := ms.Runner.Run("mkdir", []string{"-p", relStylesDir}, ms.Root); mkdirErr == nil {
+						if cpErr := ms.Runner.Run("cp", []string{"-r", "/styles/.", relStylesDir + "/"}, ms.Root); cpErr == nil {
 							logx.Success("successfully copied pre-installed styles")
 							copied = true
 						}
