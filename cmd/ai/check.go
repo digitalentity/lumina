@@ -16,8 +16,9 @@ var forceCheck bool
 var checkCmd = &cobra.Command{
 	Use:   "check",
 	Short: "Perform AI-assisted prose/literature cross-checking",
-	Long: `Analyze the manuscript to identify uncited factual assertions and cross-reference 
-existing citations against their source texts (using local BM25 ranking and LLMs).`,
+	Long: `Analyze the manuscript to identify uncited factual assertions, cross-reference
+existing citations against their source texts, and search the literature library
+for candidate citations to fill the gaps (using local BM25 ranking and LLMs).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ms, err := manuscript.Load()
 		if err != nil {
@@ -102,6 +103,22 @@ func printConsoleSummary(res *aicheck.CheckResult) {
 		}
 	} else {
 		logx.Success("Uncited Claims: None detected.")
+	}
+
+	if len(res.CitationSuggestions) > 0 {
+		fmt.Println()
+		logx.Info("Suggested Citations:")
+		for _, sr := range res.CitationSuggestions {
+			if len(sr.Suggestions) == 0 {
+				logx.Info("  %q: no supporting literature found.", sr.Assertion)
+				continue
+			}
+			var keys []string
+			for _, s := range sr.Suggestions {
+				keys = append(keys, "@"+s.CitationKey)
+			}
+			logx.Info("  %q: %s", sr.Assertion, strings.Join(keys, ", "))
+		}
 	}
 	fmt.Println()
 }

@@ -27,8 +27,9 @@ type ManuscriptParagraph struct {
 
 // CheckResult holds all findings from the AI cross-check run.
 type CheckResult struct {
-	VerifyResults []VerifyResult
-	UncitedClaims []UncitedResult
+	VerifyResults       []VerifyResult
+	UncitedClaims       []UncitedResult
+	CitationSuggestions []SuggestionResult
 }
 
 type VerifyResult struct {
@@ -43,6 +44,21 @@ type UncitedResult struct {
 	Paragraph string
 	Assertion string
 	Reasoning string
+}
+
+// CitationSuggestion is a single candidate paper judged to support an uncited claim.
+type CitationSuggestion struct {
+	CitationKey string
+	Reasoning   string
+	Passages    []string
+}
+
+// SuggestionResult holds the outcome of searching the literature for support of an uncited claim.
+type SuggestionResult struct {
+	Paragraph   string
+	Assertion   string
+	Suggestions []CitationSuggestion // empty if no candidate supported the claim well enough
+	Reasoning   string               // explains a rejection, or notes on the picks
 }
 
 // FormatEntry formats a parsed bibtex.Entry back into standard BibTeX string.
@@ -190,49 +206,11 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 				}
 
 				// Find PDF file
-				pdfPath, hasPDF := pdfMap[key]
-				if !hasPDF {
-					fallbackPath := filepath.Join(ms.Root, "literature", key+".pdf")
-					if _, err := os.Stat(fallbackPath); err == nil {
-						pdfPath = fallbackPath
-						hasPDF = true
-					}
-				}
+				pdfPath, hasPDF := resolvePDFPath(ms.Root, key, pdfMap)
 
 				var chunks []string
-				pdfHash := "missing-pdf"
-
 				if hasPDF {
-					hash, err := cache.GetFileHash(pdfPath)
-					if err == nil {
-						pdfHash = hash
-						// Check cache; fall back to on-demand extraction if stale.
-						lCache, err := cache.GetLitCache(ms.Root, pdfHash)
-						if err == nil && lCache.BibtexEntry == bibStr {
-							chunks = lCache.Chunks
-							if len(chunks) == 0 && lCache.FullText != "" {
-								chunks = SplitIntoChunks(lCache.FullText)
-							}
-						} else {
-							logx.Info("Processing cited literature: %s...", filepath.Base(pdfPath))
-							text, err := pe.ExtractText(pdfPath)
-							if err == nil {
-								chunks = SplitIntoChunks(text)
-								_ = cache.SaveLitCache(
-									ms.Root,
-									pdfHash,
-									&cache.LitCacheEntry{
-										BibtexKey:   key,
-										BibtexEntry: bibStr,
-										FullText:    text,
-										Chunks:      chunks,
-									},
-								)
-							} else {
-								logx.Warn("Failed to extract text from %s: %v", filepath.Base(pdfPath), err)
-							}
-						}
-					}
+					chunks = getOrExtractChunks(ms, pe, key, pdfPath, bibStr)
 				} else {
 					logx.Warn("Literature PDF missing for citation @%s", key)
 				}
@@ -310,6 +288,57 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 		}
 	}
 
+	// 5. Suggest supporting literature for uncited claims, searching across the
+	// whole library since there is no citation key to scope the search to.
+	if len(res.UncitedClaims) > 0 {
+		litIndex, chunkKeys := buildLiteratureIndex(ms, pe, bibMap, pdfMap)
+		for _, uc := range res.UncitedClaims {
+			candidates := findSuggestionCandidates(litIndex, chunkKeys, bibMap, uc.Assertion)
+			if len(candidates) == 0 {
+				continue
+			}
+
+			prompt, err := llm.RenderSuggestPrompt(llm.SuggestPromptData{
+				Assertion:  uc.Assertion,
+				Paragraph:  uc.Paragraph,
+				Candidates: candidates,
+			})
+			if err != nil {
+				logx.Error("Failed to render suggest prompt: %v", err)
+				continue
+			}
+
+			if !client.IsCached(prompt) {
+				logx.Info("Searching literature for support of: %q...", uc.Assertion)
+			}
+			rawJSON, err := client.Call(ctx, prompt)
+			if err != nil {
+				logx.Error("LLM citation suggestion failed: %v", err)
+				continue
+			}
+			sr, err := llm.ParseSuggestionResult(rawJSON)
+			if err != nil {
+				logx.Error("Failed to parse suggestion result: %v", err)
+				continue
+			}
+
+			suggestions := make([]CitationSuggestion, len(sr.Suggestions))
+			for i, s := range sr.Suggestions {
+				suggestions[i] = CitationSuggestion{
+					CitationKey: s.CitationKey,
+					Reasoning:   s.Reasoning,
+					Passages:    s.Passages,
+				}
+			}
+			res.CitationSuggestions = append(res.CitationSuggestions, SuggestionResult{
+				Paragraph:   uc.Paragraph,
+				Assertion:   uc.Assertion,
+				Suggestions: suggestions,
+				Reasoning:   sr.Reasoning,
+			})
+		}
+	}
+
 	return res, nil
 }
 
@@ -329,6 +358,136 @@ func ExtractManuscriptParagraphs(mdContent string) []ManuscriptParagraph {
 // SplitIntoChunks splits text into paragraph-sized chunks for BM25 indexing.
 func SplitIntoChunks(text string) []string {
 	return chunk.Split(text, 10)
+}
+
+// suggestCandidatePapers and suggestCandidatePassages bound how much literature
+// context is fed into a single citation-suggestion LLM call.
+const (
+	suggestSearchPoolSize    = 20 // number of chunks pulled from the combined index before grouping
+	suggestCandidatePapers   = 4  // distinct papers offered to the LLM per uncited claim
+	suggestCandidatePassages = 3  // passages kept per candidate paper
+)
+
+// resolvePDFPath finds the literature PDF for a citation key, falling back to
+// the conventional "literature/<key>.pdf" path if it isn't in pdfMap.
+func resolvePDFPath(root, key string, pdfMap map[string]string) (string, bool) {
+	if p, ok := pdfMap[key]; ok {
+		return p, true
+	}
+	fallback := filepath.Join(root, "literature", key+".pdf")
+	if _, err := os.Stat(fallback); err == nil {
+		return fallback, true
+	}
+	return "", false
+}
+
+// getOrExtractChunks resolves the chunked text of a literature PDF, reusing the
+// on-disk cache when the bib entry it was extracted alongside hasn't changed.
+func getOrExtractChunks(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, key, pdfPath, bibStr string) []string {
+	hash, err := cache.GetFileHash(pdfPath)
+	if err != nil {
+		logx.Warn("Failed to hash %s: %v", filepath.Base(pdfPath), err)
+		return nil
+	}
+
+	if lCache, err := cache.GetLitCache(ms.Root, hash); err == nil && lCache.BibtexEntry == bibStr {
+		chunks := lCache.Chunks
+		if len(chunks) == 0 && lCache.FullText != "" {
+			chunks = SplitIntoChunks(lCache.FullText)
+		}
+		return chunks
+	}
+
+	logx.Info("Processing literature: %s...", filepath.Base(pdfPath))
+	text, err := pe.ExtractText(pdfPath)
+	if err != nil {
+		logx.Warn("Failed to extract text from %s: %v", filepath.Base(pdfPath), err)
+		return nil
+	}
+
+	chunks := SplitIntoChunks(text)
+	if err := cache.SaveLitCache(ms.Root, hash, &cache.LitCacheEntry{
+		BibtexKey:   key,
+		BibtexEntry: bibStr,
+		FullText:    text,
+		Chunks:      chunks,
+	}); err != nil {
+		logx.Warn("Failed to save cache for %s: %v", filepath.Base(pdfPath), err)
+	}
+	return chunks
+}
+
+// buildLiteratureIndex builds a single BM25 index across every resolvable
+// literature PDF, not just cited ones, so uncited claims can be matched against
+// the full library rather than a single already-known paper. It returns the
+// index alongside a parallel slice mapping each indexed chunk back to the
+// citation key of the paper it came from.
+func buildLiteratureIndex(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, bibMap map[string]bibtex.Entry, pdfMap map[string]string) (*bm25.Index, []string) {
+	keys := make([]string, 0, len(pdfMap))
+	for key := range pdfMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys) // deterministic ordering, since results feed an LLM cache key
+
+	var chunks []string
+	var chunkKeys []string
+	for _, key := range keys {
+		pdfPath, hasPDF := resolvePDFPath(ms.Root, key, pdfMap)
+		if !hasPDF {
+			continue
+		}
+
+		bibStr := ""
+		if e, ok := bibMap[key]; ok {
+			bibStr = FormatEntry(e)
+		}
+
+		for _, c := range getOrExtractChunks(ms, pe, key, pdfPath, bibStr) {
+			chunks = append(chunks, c)
+			chunkKeys = append(chunkKeys, key)
+		}
+	}
+
+	return bm25.NewIndex(chunks), chunkKeys
+}
+
+// findSuggestionCandidates searches the combined literature index for passages
+// relevant to a claim, groups the results by source paper, and returns up to
+// suggestCandidatePapers candidates each carrying up to suggestCandidatePassages
+// supporting passages, ranked by BM25 relevance.
+func findSuggestionCandidates(index *bm25.Index, chunkKeys []string, bibMap map[string]bibtex.Entry, query string) []llm.SuggestionCandidate {
+	results := index.SearchScored(query, suggestSearchPoolSize)
+
+	var order []string
+	selected := make(map[string]bool)
+	passagesByKey := make(map[string][]string)
+	for _, r := range results {
+		key := chunkKeys[r.ID]
+		if !selected[key] {
+			if len(order) >= suggestCandidatePapers {
+				continue
+			}
+			selected[key] = true
+			order = append(order, key)
+		}
+		if len(passagesByKey[key]) < suggestCandidatePassages {
+			passagesByKey[key] = append(passagesByKey[key], r.Text)
+		}
+	}
+
+	candidates := make([]llm.SuggestionCandidate, 0, len(order))
+	for _, key := range order {
+		bibStr := ""
+		if e, ok := bibMap[key]; ok {
+			bibStr = FormatEntry(e)
+		}
+		candidates = append(candidates, llm.SuggestionCandidate{
+			CitationKey: key,
+			Bibtex:      bibStr,
+			Passages:    passagesByKey[key],
+		})
+	}
+	return candidates
 }
 
 // buildPDFMap scans the literature directory to match citation keys to PDFs and updates the bibMap.

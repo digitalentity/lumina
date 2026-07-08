@@ -31,6 +31,25 @@ func TestWriteReport(t *testing.T) {
 				Reasoning: "Assertion reasoning",
 			},
 		},
+		CitationSuggestions: []SuggestionResult{
+			{
+				Paragraph: "Uncited claim paragraph.",
+				Assertion: "Uncited assertion",
+				Suggestions: []CitationSuggestion{
+					{
+						CitationKey: "jones2023",
+						Reasoning:   "Jones directly measured this effect.",
+						Passages:    []string{"the effect was measured at 3.2 units"},
+					},
+				},
+			},
+			{
+				Paragraph:   "Another uncited paragraph.",
+				Assertion:   "Another unsupported assertion",
+				Suggestions: nil,
+				Reasoning:   "No candidate paper addressed this claim.",
+			},
+		},
 	}
 
 	if err := WriteReport(tmpDir, res); err != nil {
@@ -46,12 +65,15 @@ func TestWriteReport(t *testing.T) {
 	content := string(data)
 
 	expectedSubstrings := []string{
-		"# AI-Assisted Prose & Literature Cross-Check Report",
+		"# 🔬 AI-Assisted Prose & Literature Cross-Check Report",
 		"SUPPORTED",
 		"smith2024",
 		"supporting passage",
 		"Uncited assertion",
 		"Assertion reasoning",
+		"jones2023",
+		"the effect was measured at 3.2 units",
+		"No candidate paper addressed this claim.",
 	}
 
 	for _, sub := range expectedSubstrings {

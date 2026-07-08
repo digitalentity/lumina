@@ -29,6 +29,19 @@ type UncitedResponse struct {
 	UncitedClaims []UncitedClaim `json:"uncited_claims"`
 }
 
+// CitationSuggestion is a single candidate paper the LLM judged as supporting an uncited claim.
+type CitationSuggestion struct {
+	CitationKey string   `json:"citation_key"`
+	Reasoning   string   `json:"reasoning"`
+	Passages    []string `json:"passages"`
+}
+
+// SuggestionResult holds the outcome of asking the LLM to pick supporting literature for an uncited claim.
+type SuggestionResult struct {
+	Suggestions []CitationSuggestion `json:"suggestions"`
+	Reasoning   string               `json:"reasoning"`
+}
+
 // Client defines the interface for contacting LLM providers.
 type Client interface {
 	// ModelName returns the model identifier used by this client.
@@ -97,6 +110,16 @@ func ParseUncitedClaims(raw string) ([]UncitedClaim, error) {
 		return nil, fmt.Errorf("failed to parse uncited claims response JSON: %w (raw: %s)", err, raw)
 	}
 	return res.UncitedClaims, nil
+}
+
+// ParseSuggestionResult unmarshals a raw JSON string into a SuggestionResult.
+func ParseSuggestionResult(raw string) (*SuggestionResult, error) {
+	cleaned := cleanJSON(raw)
+	var res SuggestionResult
+	if err := json.Unmarshal([]byte(cleaned), &res); err != nil {
+		return nil, fmt.Errorf("failed to parse suggestion response JSON: %w (raw: %s)", err, raw)
+	}
+	return &res, nil
 }
 
 // cleanJSON strips optional markdown fences from LLM JSON responses.

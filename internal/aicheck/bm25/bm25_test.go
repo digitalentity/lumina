@@ -68,3 +68,27 @@ func TestBM25Search(t *testing.T) {
 		t.Errorf("expected 2 results, got %v", res3)
 	}
 }
+
+func TestSearchScored(t *testing.T) {
+	chunks := []string{
+		"The gravity drive distortions can alter spatial metrics around the engine.",
+		"Warp cores power antigravity propulsion inside modern spaceships.",
+		"Simple combustion engines rely on chemical reactions of fossil fuels.",
+	}
+	idx := NewIndex(chunks)
+
+	results := idx.SearchScored("combustion engines fossil fuels", 2)
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if results[0].ID != 2 || results[0].Text != chunks[2] {
+		t.Errorf("expected top result to be doc 2 (%q), got ID=%d text=%q", chunks[2], results[0].ID, results[0].Text)
+	}
+	if results[0].Score <= results[1].Score {
+		t.Errorf("expected descending scores, got %v then %v", results[0].Score, results[1].Score)
+	}
+
+	if empty := NewIndex(nil).SearchScored("anything", 5); len(empty) != 0 {
+		t.Errorf("expected no results from empty index, got %v", empty)
+	}
+}

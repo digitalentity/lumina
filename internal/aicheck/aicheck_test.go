@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"lumina/internal/aicheck/bm25"
 	"lumina/internal/aicheck/cache"
 	"lumina/internal/bibtex"
 	"lumina/internal/config"
@@ -259,5 +260,74 @@ func TestBuildPDFMap(t *testing.T) {
 		t.Errorf("expected smith2024 to be added to bibMap")
 	} else if entry.Fields["title"] != "Warp Distortion" {
 		t.Errorf("expected entry title to be 'Warp Distortion', got %q", entry.Fields["title"])
+	}
+}
+
+func TestResolvePDFPath(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lumina-resolve-pdf-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	litDir := filepath.Join(tmpDir, "literature")
+	if err := os.MkdirAll(litDir, 0755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	t.Run("resolves from pdfMap", func(t *testing.T) {
+		pdfMap := map[string]string{"smith2024": "/some/mapped/path.pdf"}
+		path, ok := resolvePDFPath(tmpDir, "smith2024", pdfMap)
+		if !ok || path != "/some/mapped/path.pdf" {
+			t.Errorf("expected mapped path, got %q, ok=%v", path, ok)
+		}
+	})
+
+	t.Run("falls back to literature/<key>.pdf", func(t *testing.T) {
+		fallbackPath := filepath.Join(litDir, "jones2023.pdf")
+		if err := os.WriteFile(fallbackPath, []byte("mock"), 0644); err != nil {
+			t.Fatalf("write pdf: %v", err)
+		}
+		path, ok := resolvePDFPath(tmpDir, "jones2023", map[string]string{})
+		if !ok || path != fallbackPath {
+			t.Errorf("expected fallback path %q, got %q, ok=%v", fallbackPath, path, ok)
+		}
+	})
+
+	t.Run("missing entirely", func(t *testing.T) {
+		_, ok := resolvePDFPath(tmpDir, "nobody2020", map[string]string{})
+		if ok {
+			t.Errorf("expected no PDF to resolve for unknown key")
+		}
+	})
+}
+
+func TestFindSuggestionCandidates(t *testing.T) {
+	chunks := []string{
+		"The first warp drive prototype was built in 1998.",       // smith2024
+		"Antigravity propulsion remains theoretical in 2024.",     // smith2024
+		"Combustion engines rely on chemical reactions of fuels.", // jones2023
+		"Fossil fuel engines were phased out by 2030.",            // jones2023
+		"Unrelated botanical study of desert flora.",              // doe2021
+	}
+	chunkKeys := []string{"smith2024", "smith2024", "jones2023", "jones2023", "doe2021"}
+	index := bm25.NewIndex(chunks)
+
+	bibMap := map[string]bibtex.Entry{
+		"smith2024": {Type: "article", Key: "smith2024", Fields: map[string]string{"title": "Warp History"}},
+	}
+
+	candidates := findSuggestionCandidates(index, chunkKeys, bibMap, "warp drive prototype built in 1998")
+	if len(candidates) == 0 {
+		t.Fatalf("expected at least one candidate")
+	}
+	if candidates[0].CitationKey != "smith2024" {
+		t.Errorf("expected top candidate smith2024, got %q", candidates[0].CitationKey)
+	}
+	if !strings.Contains(candidates[0].Bibtex, "Warp History") {
+		t.Errorf("expected bibtex to be attached to candidate, got %q", candidates[0].Bibtex)
+	}
+	if len(candidates[0].Passages) == 0 {
+		t.Errorf("expected passages attached to top candidate")
 	}
 }

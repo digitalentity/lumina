@@ -77,6 +77,33 @@ func TestParseUncitedClaims(t *testing.T) {
 	}
 }
 
+func TestParseSuggestionResult(t *testing.T) {
+	t.Run("with suggestions", func(t *testing.T) {
+		raw := `{"suggestions":[{"citation_key":"jones2023","reasoning":"Direct measurement.","passages":["p1"]}],"reasoning":"Good fit."}`
+		sr, err := ParseSuggestionResult(raw)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sr.Suggestions) != 1 || sr.Suggestions[0].CitationKey != "jones2023" {
+			t.Errorf("unexpected suggestions: %+v", sr.Suggestions)
+		}
+	})
+
+	t.Run("rejecting all candidates", func(t *testing.T) {
+		raw := `{"suggestions":[],"reasoning":"None of the candidates address the claim."}`
+		sr, err := ParseSuggestionResult(raw)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(sr.Suggestions) != 0 {
+			t.Errorf("expected no suggestions, got %+v", sr.Suggestions)
+		}
+		if sr.Reasoning != "None of the candidates address the claim." {
+			t.Errorf("unexpected reasoning: %q", sr.Reasoning)
+		}
+	})
+}
+
 func TestNewClient(t *testing.T) {
 	t.Run("gemini missing key", func(t *testing.T) {
 		os.Unsetenv("GEMINI_API_KEY")
@@ -181,6 +208,37 @@ func TestRenderPrompts(t *testing.T) {
 			t.Errorf("rendered prompt missing manuscript text")
 		}
 	})
+
+	t.Run("suggest prompt template", func(t *testing.T) {
+		data := SuggestPromptData{
+			Assertion: "Warp drives were built in 1998.",
+			Paragraph: "Warp drives were built in 1998, changing spaceflight forever.",
+			Candidates: []SuggestionCandidate{
+				{
+					CitationKey: "jones2023",
+					Bibtex:      "@article{jones2023, title={Warp History}}",
+					Passages:    []string{"The first warp drive prototype was built in 1998."},
+				},
+			},
+		}
+
+		prompt, err := RenderSuggestPrompt(data)
+		if err != nil {
+			t.Fatalf("failed to render: %v", err)
+		}
+
+		expectedSubstrings := []string{
+			"Warp drives were built in 1998.",
+			"@jones2023",
+			"@article{jones2023, title={Warp History}}",
+			"The first warp drive prototype was built in 1998.",
+		}
+		for _, sub := range expectedSubstrings {
+			if !strings.Contains(prompt, sub) {
+				t.Errorf("rendered prompt missing expected content: %q", sub)
+			}
+		}
+	})
 }
 
 type mockClient struct {
@@ -249,4 +307,3 @@ func TestCachingClient(t *testing.T) {
 		t.Errorf("expected no additional base call, got %d", base.calls)
 	}
 }
-

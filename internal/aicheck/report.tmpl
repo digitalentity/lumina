@@ -1,6 +1,6 @@
-# AI-Assisted Prose & Literature Cross-Check Report
+# 🔬 AI-Assisted Prose & Literature Cross-Check Report
 
-## 1. Citation Verification Summary
+## 1. 📖 Citation Verification Summary
 
 {{if not .VerifyResults}}
 No citations were analyzed.
@@ -29,7 +29,7 @@ No citations were analyzed.
 {{end}}
 {{end}}
 
-## 2. Uncited Claims Detected
+## 2. ⚠️ Uncited Claims Detected
 
 {{if not .UncitedClaims}}
 No uncited factual assertions were detected. All prose claims appear appropriately backed.
@@ -40,13 +40,41 @@ The following statements in the manuscript were identified as factual, empirical
 ### ⚠️ Finding {{add $i 1}}: Missing Citation
 
 * **Uncited Assertion**:
-  `{{$uc.Assertion}}`
+  "{{$uc.Assertion}}"
 
 * **Reasoning**:
   {{$uc.Reasoning}}
 
 * **Containing Paragraph**:
   > {{$uc.Paragraph}}
+
+---
+{{end}}
+{{end}}
+
+## 3. 🔎 Suggested Citations for Uncited Claims
+
+{{if not .CitationSuggestions}}
+No candidate literature was searched or matched for the uncited claims above.
+{{else}}
+{{range $i, $sr := .CitationSuggestions}}
+### {{if $sr.Suggestions}}📚{{else}}❌{{end}} Finding {{add $i 1}}: "{{$sr.Assertion}}"
+
+{{if not $sr.Suggestions}}
+* **No supporting literature found.**
+* **Reasoning**: {{$sr.Reasoning}}
+{{else}}
+{{range $sr.Suggestions}}
+* ✅ **Candidate**: @{{.CitationKey}}
+  * **Reasoning**: {{.Reasoning}}
+{{if .Passages}}  * **Supporting Passages**:
+{{range .Passages}}    > 💬 {{.}}
+{{end}}
+{{end}}
+{{end}}
+{{if $sr.Reasoning}}* 📝 **Overall Note**: {{$sr.Reasoning}}
+{{end}}
+{{end}}
 
 ---
 {{end}}

@@ -1,0 +1,49 @@
+You are an academic citation researcher. A claim in the manuscript below was flagged as making an assertion that requires a citation but currently has none.
+
+You are given several candidate papers from the author's literature collection, each with passages retrieved for relevance to the claim. Decide whether any of these candidates actually supports the claim well enough to be cited for it.
+
+Only select a candidate if its passages genuinely substantiate the assertion. If none of the candidates support the claim well enough, reject all of them and explain why in "reasoning".
+
+You MUST respond ONLY with a JSON object of this structure:
+
+```json
+{
+  "suggestions": [
+    {
+      "citation_key": "smith2024",
+      "reasoning": "Explain step-by-step why this paper supports the claim, quoting specific parts. Be concise but accurate.",
+      "passages": ["Direct sentence or phrase quoted from the candidate's passages that supports the claim."]
+    }
+  ],
+  "reasoning": "If suggestions is empty, explain why none of the candidates support the claim. Otherwise a brief overall note; may be empty."
+}
+```
+
+---
+
+Uncited Claim:
+
+"{{.Assertion}}"
+
+---
+
+Containing Paragraph:
+
+"{{.Paragraph}}"
+
+---
+
+Candidate Papers:
+
+{{range .Candidates}}
+Citation Key: @{{.CitationKey}}
+
+{{.Bibtex}}
+
+Relevant Passages:
+{{range .Passages}}
+{{.}}
+
+{{end}}
+---
+{{end}}

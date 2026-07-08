@@ -85,16 +85,30 @@ func NewIndex(chunks []string) *Index {
 	}
 }
 
-type searchResult struct {
-	doc   Document
-	score float64
+// ScoredResult pairs a matched chunk with its document ID and BM25 score.
+type ScoredResult struct {
+	ID    int
+	Text  string
+	Score float64
 }
 
 // Search ranks the indexed chunks against the query and returns the topN raw strings.
 func (idx *Index) Search(query string, topN int) []string {
+	scored := idx.SearchScored(query, topN)
+	results := make([]string, len(scored))
+	for i, r := range scored {
+		results[i] = r.Text
+	}
+	return results
+}
+
+// SearchScored ranks the indexed chunks against the query and returns the topN
+// results along with their document ID and BM25 score, so callers can trace a
+// match back to its source (e.g. which paper a chunk came from).
+func (idx *Index) SearchScored(query string, topN int) []ScoredResult {
 	n := len(idx.Docs)
 	if n == 0 || topN <= 0 {
-		return []string{}
+		return []ScoredResult{}
 	}
 
 	qTokens := Tokenise(query)
@@ -104,9 +118,9 @@ func (idx *Index) Search(query string, topN int) []string {
 		if limit > n {
 			limit = n
 		}
-		results := make([]string, limit)
+		results := make([]ScoredResult, limit)
 		for i := 0; i < limit; i++ {
-			results[i] = idx.Docs[i].Raw
+			results[i] = ScoredResult{ID: idx.Docs[i].ID, Text: idx.Docs[i].Raw}
 		}
 		return results
 	}
@@ -115,7 +129,7 @@ func (idx *Index) Search(query string, topN int) []string {
 	k1 := 1.2
 	b := 0.75
 
-	scores := make([]searchResult, n)
+	scores := make([]ScoredResult, n)
 	for i, doc := range idx.Docs {
 		var score float64
 		for _, qToken := range qTokens {
@@ -124,33 +138,25 @@ func (idx *Index) Search(query string, topN int) []string {
 				continue
 			}
 			idfVal := idx.IDF[qToken]
-			
+
 			// BM25 term frequency scaling formula
 			tfScaled := (tf * (k1 + 1.0)) / (tf + k1*(1.0-b+b*(float64(doc.Len)/idx.AvgDocLen)))
 			score += idfVal * tfScaled
 		}
-		scores[i] = searchResult{
-			doc:   doc,
-			score: score,
-		}
+		scores[i] = ScoredResult{ID: doc.ID, Text: doc.Raw, Score: score}
 	}
 
 	// Sort by score descending, breaking ties with Document ID ascending
 	sort.Slice(scores, func(i, j int) bool {
-		if scores[i].score == scores[j].score {
-			return scores[i].doc.ID < scores[j].doc.ID
+		if scores[i].Score == scores[j].Score {
+			return scores[i].ID < scores[j].ID
 		}
-		return scores[i].score > scores[j].score
+		return scores[i].Score > scores[j].Score
 	})
 
 	limit := topN
 	if limit > n {
 		limit = n
 	}
-
-	results := make([]string, limit)
-	for i := 0; i < limit; i++ {
-		results[i] = scores[i].doc.Raw
-	}
-	return results
+	return scores[:limit]
 }
