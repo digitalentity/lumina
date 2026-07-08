@@ -24,6 +24,11 @@ func TestLoadConfig(t *testing.T) {
 			Formats:    []string{"pdf", "docx", "tex", "zip"},
 			Runner:     "host",
 			ToolsImage: "lumina-tools:latest",
+			AI: AIConfig{
+				Provider:    "gemini",
+				Model:       "gemini-2.5-flash",
+				Temperature: 0.2,
+			},
 		}
 		if !reflect.DeepEqual(cfg, expected) {
 			t.Errorf("got %+v, expected %+v", cfg, expected)
@@ -38,6 +43,11 @@ formats:
   - tex
 runner: docker
 tools-image: custom-image:v1
+ai:
+  provider: openai
+  model: gpt-4o-mini
+  base-url: "https://api.openai.com/v1"
+  temperature: 0.5
 `
 		err := os.WriteFile(filepath.Join(tempDir, "lumina.yaml"), []byte(content), 0644)
 		if err != nil {
@@ -53,6 +63,12 @@ tools-image: custom-image:v1
 			Formats:    []string{"pdf", "tex"},
 			Runner:     "docker",
 			ToolsImage: "custom-image:v1",
+			AI: AIConfig{
+				Provider:    "openai",
+				Model:       "gpt-4o-mini",
+				BaseURL:     "https://api.openai.com/v1",
+				Temperature: 0.5,
+			},
 		}
 		if !reflect.DeepEqual(cfg, expected) {
 			t.Errorf("got %+v, expected %+v", cfg, expected)

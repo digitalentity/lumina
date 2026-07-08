@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"lumina/cmd/ai"
 	"lumina/cmd/build"
 	"lumina/cmd/lit"
 	"lumina/cmd/text"
@@ -35,6 +36,7 @@ func Execute() {
 
 func init() {
 	rootCmd.AddCommand(lit.LitCmd)
+	rootCmd.AddCommand(ai.AICmd)
 	rootCmd.AddCommand(build.BuildCmd)
 	rootCmd.AddCommand(text.TextCmd)
 }

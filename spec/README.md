@@ -13,8 +13,11 @@
 | # | Feature | Status | Created | Updated | Spec |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 001 | Lumina Core CLI | ✅ COMPLETED | 2026-07-08 | 2026-07-08 | [spec.md](001_lumina_core/spec.md) |
+| 002 | AI Literature Cross-Checking | ✅ COMPLETED | 2026-07-08 | 2026-07-08 | [spec.md](002_ai_cross_check/spec.md) |
 
 ## Proposed
 
 | # | Feature | Status | Created | Updated | Spec |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+
+

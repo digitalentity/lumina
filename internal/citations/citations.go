@@ -19,7 +19,8 @@ import (
 	"lumina/internal/manuscript"
 )
 
-var citationRe = regexp.MustCompile(`(?:^|[^a-zA-Z0-9\\])@([a-zA-Z0-9_](?:[a-zA-Z0-9_:\-./]*[a-zA-Z0-9_])?)`)
+// CitationRe matches citation keys in markdown/text.
+var CitationRe = regexp.MustCompile(`(?:^|[^a-zA-Z0-9\\])@([a-zA-Z0-9_](?:[a-zA-Z0-9_:\-./]*[a-zA-Z0-9_])?)`)
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9]`)
 
 // CrossRefPrefixes are citation-like keys that refer to section, figure,
@@ -65,6 +66,27 @@ func IsCrossRef(key string) bool {
 	return false
 }
 
+// ExtractCitationsFromText finds unique citation keys in raw text, skipping cross-references.
+func ExtractCitationsFromText(text string) []string {
+	matches := CitationRe.FindAllStringSubmatch(text, -1)
+	if matches == nil {
+		return []string{}
+	}
+	seen := make(map[string]bool)
+	var keys []string
+	for _, m := range matches {
+		key := m[1]
+		if IsCrossRef(key) {
+			continue
+		}
+		if !seen[key] {
+			seen[key] = true
+			keys = append(keys, key)
+		}
+	}
+	return keys
+}
+
 // ExtractCitations returns the set of citation keys referenced in Markdown content.
 func ExtractCitations(mdContent string) map[string]bool {
 	source := []byte(mdContent)
@@ -106,8 +128,9 @@ func ExtractCitations(mdContent string) map[string]bool {
 	})
 
 	keys := make(map[string]bool)
-	for _, m := range citationRe.FindAllSubmatch(sanitized, -1) {
-		keys[string(m[1])] = true
+	matches := CitationRe.FindAllStringSubmatch(string(sanitized), -1)
+	for _, m := range matches {
+		keys[m[1]] = true
 	}
 	return keys
 }
