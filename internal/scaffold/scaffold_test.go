@@ -3,6 +3,7 @@ package scaffold
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,16 @@ func TestInit(t *testing.T) {
 		if _, err := os.Stat(path); err != nil {
 			t.Errorf("expected file %s to be created, but it was not", f)
 		}
+	}
+
+	// Verify gitignore contains .env
+	giPath := filepath.Join(tempDir, ".gitignore")
+	giContent, err := os.ReadFile(giPath)
+	if err != nil {
+		t.Fatalf("failed to read generated .gitignore: %v", err)
+	}
+	if !strings.Contains(string(giContent), ".env") {
+		t.Errorf("expected generated .gitignore to contain '.env', got:\n%s", string(giContent))
 	}
 
 	// Verify we don't overwrite if files exist

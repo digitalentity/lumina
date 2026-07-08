@@ -74,6 +74,31 @@ ai:
 			t.Errorf("got %+v, expected %+v", cfg, expected)
 		}
 	})
+
+	t.Run("loads .env file", func(t *testing.T) {
+		tempDir, err := os.MkdirTemp("", "lumina-config-env-test")
+		if err != nil {
+			t.Fatalf("failed to create temp dir: %v", err)
+		}
+		defer os.RemoveAll(tempDir)
+
+		envContent := "TEST_ENV_VAR=hello_env"
+		err = os.WriteFile(filepath.Join(tempDir, ".env"), []byte(envContent), 0644)
+		if err != nil {
+			t.Fatalf("failed to write .env file: %v", err)
+		}
+
+		defer os.Unsetenv("TEST_ENV_VAR")
+
+		_, err = LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if os.Getenv("TEST_ENV_VAR") != "hello_env" {
+			t.Errorf("expected TEST_ENV_VAR to be 'hello_env', got %q", os.Getenv("TEST_ENV_VAR"))
+		}
+	})
 }
 
 func TestLoadMetadata(t *testing.T) {

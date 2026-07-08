@@ -31,6 +31,10 @@ type LuminaMetadata struct {
 
 // LoadConfig reads lumina.yaml from root. If file doesn't exist, returns default Config.
 func LoadConfig(root string) (Config, error) {
+	if err := LoadEnv(root); err != nil {
+		return Config{}, err
+	}
+
 	defaultCfg := Config{
 		PDFEngine:  "xelatex",
 		Formats:    []string{"pdf", "docx", "tex", "zip"},
