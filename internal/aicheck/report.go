@@ -35,6 +35,8 @@ var reportFuncs = template.FuncMap{
 			return "🟡 UNSUPPORTED"
 		case "neutral":
 			return "🔵 NEUTRAL"
+		case "unknown":
+			return "⚪ UNKNOWN"
 		default:
 			return strings.ToUpper(status)
 		}
@@ -49,6 +51,8 @@ var reportFuncs = template.FuncMap{
 			return "🟡"
 		case "neutral":
 			return "🔵"
+		case "unknown":
+			return "⚪"
 		default:
 			return "ℹ️"
 		}

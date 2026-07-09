@@ -90,9 +90,43 @@ func NewClient(cfg config.AIConfig) (Client, error) {
 			Temperature: cfg.Temperature,
 		}, nil
 
+	case "mock":
+		return &MockClient{}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported AI provider: %q (must be 'gemini' or 'openai')", cfg.Provider)
 	}
+}
+
+// MockClient is a mock LLM client for testing.
+type MockClient struct {
+	MockModelName func() string
+	MockCall      func(ctx context.Context, prompt string) (string, error)
+	MockEmbed     func(ctx context.Context, text string, model string) ([]float32, error)
+}
+
+// ModelName returns the mock model name.
+func (m *MockClient) ModelName() string {
+	if m.MockModelName != nil {
+		return m.MockModelName()
+	}
+	return "mock"
+}
+
+// Call mocks the LLM api call.
+func (m *MockClient) Call(ctx context.Context, prompt string) (string, error) {
+	if m.MockCall != nil {
+		return m.MockCall(ctx, prompt)
+	}
+	return "{}", nil
+}
+
+// Embed mocks the embedding call.
+func (m *MockClient) Embed(ctx context.Context, text string, model string) ([]float32, error) {
+	if m.MockEmbed != nil {
+		return m.MockEmbed(ctx, text, model)
+	}
+	return []float32{}, nil
 }
 
 // ParseVerificationResult unmarshals a raw JSON string into a VerificationResult.

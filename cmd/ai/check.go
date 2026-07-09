@@ -53,6 +53,7 @@ func printConsoleSummary(res *aicheck.CheckResult) {
 	supported := 0
 	contradicted := 0
 	unsupported := 0
+	unknown := 0
 	neutral := 0
 
 	for _, vr := range res.VerifyResults {
@@ -63,6 +64,8 @@ func printConsoleSummary(res *aicheck.CheckResult) {
 			contradicted++
 		case "unsupported":
 			unsupported++
+		case "unknown":
+			unknown++
 		default:
 			neutral++
 		}
@@ -80,14 +83,19 @@ func printConsoleSummary(res *aicheck.CheckResult) {
 	} else {
 		logx.Info("  Unsupported:  %d", unsupported)
 	}
+	if unknown > 0 {
+		logx.Warn("  Unknown:      %d", unknown)
+	} else {
+		logx.Info("  Unknown:      %d", unknown)
+	}
 	logx.Info("  Neutral/Other: %d", neutral)
 
-	// Print details of contradicted/unsupported
-	if contradicted > 0 || unsupported > 0 {
+	// Print details of contradicted/unsupported/unknown
+	if contradicted > 0 || unsupported > 0 || unknown > 0 {
 		fmt.Println()
 		logx.Warn("Detailed citation warnings:")
 		for _, vr := range res.VerifyResults {
-			if vr.Status == "contradicted" || vr.Status == "unsupported" {
+			if vr.Status == "contradicted" || vr.Status == "unsupported" || vr.Status == "unknown" {
 				logx.Warn("  @%s is %s:", vr.CitationKey, strings.ToUpper(vr.Status))
 				logx.Warn("    Reason: %s", vr.Reasoning)
 			}

@@ -331,3 +331,51 @@ func TestFindSuggestionCandidates(t *testing.T) {
 		t.Errorf("expected passages attached to top candidate")
 	}
 }
+
+func TestRunCrossCheck_MissingPaperText(t *testing.T) {
+	newRunner := func() runner.Runner {
+		return &mockRunner{
+			checkPresentFunc: func(tool string) error { return nil },
+		}
+	}
+
+	t.Run("missing paper text returns unknown status", func(t *testing.T) {
+		ms, root := makeTestManuscript(t, newRunner())
+		ms.Source = filepath.Join(root, "manuscript.md")
+		ms.Config.AI.Provider = "mock"
+
+		// Write references.bib
+		bibContent := "@article{smith2024,\n  title = {Warp Drive},\n  author = {John Smith},\n}"
+		if err := os.WriteFile(filepath.Join(root, "references.bib"), []byte(bibContent), 0644); err != nil {
+			t.Fatalf("write bib: %v", err)
+		}
+
+		// Write manuscript.md
+		mdContent := "This is a claim that cites a paper [@smith2024]."
+		if err := os.WriteFile(ms.Source, []byte(mdContent), 0644); err != nil {
+			t.Fatalf("write manuscript: %v", err)
+		}
+
+		// Note: we do NOT create the PDF file, so literature paper text will not be present.
+
+		res, err := RunCrossCheck(context.Background(), ms, false)
+		if err != nil {
+			t.Fatalf("RunCrossCheck error: %v", err)
+		}
+
+		if len(res.VerifyResults) != 1 {
+			t.Fatalf("expected 1 verification result, got %d", len(res.VerifyResults))
+		}
+
+		vr := res.VerifyResults[0]
+		if vr.CitationKey != "smith2024" {
+			t.Errorf("expected citation key 'smith2024', got '%s'", vr.CitationKey)
+		}
+		if vr.Status != "unknown" {
+			t.Errorf("expected status 'unknown', got '%s'", vr.Status)
+		}
+		if !strings.Contains(vr.Reasoning, "Literature paper text is not present") {
+			t.Errorf("expected reasoning to mention missing text, got '%s'", vr.Reasoning)
+		}
+	})
+}

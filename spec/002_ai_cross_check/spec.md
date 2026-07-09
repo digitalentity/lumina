@@ -4,7 +4,7 @@
 * **Status:** `COMPLETED`
 * **Author:** Antigravity (agent)
 * **Created:** 2026-07-08
-* **Last Updated:** 2026-07-08
+* **Last Updated:** 2026-07-09
 * **Approver:** Konstantin Sharlaimov
 
 ---
@@ -23,7 +23,7 @@ The cost of doing nothing: higher rates of manuscript rejection, accidental acad
 
 ### 1.2 Proposed Solution
 
-Introduce a new command group/subcommand `lumina lit ai-check` that uses Gen AI (specifically Gemini) to:
+Introduce a new command group `lumina ai` with subcommands `check` and `index` that use Gen AI to:
 1. Analyze `manuscript.md` to flag paragraphs or statements making factual/academic assertions that lack a citation.
 2. Cross-reference existing citations in `manuscript.md` against their source texts (resolved from `references.bib` and PDFs/metadata in `literature/`) to verify that the cited literature supports the claim.
 
@@ -35,7 +35,9 @@ The command will run locally, parse the manuscript, extract citations, resolve P
 
 #### In Scope
 
-* **New CLI Subcommand**: `lumina lit ai-check` (or `lumina lit aicheck`).
+* **New CLI Command Group**: `lumina ai` command group containing:
+  * `lumina ai check` — performs prose/literature cross-checking.
+  * `lumina ai index` — pre-indexes literature PDFs into the local cache.
 * **Multi-LLM Provider Support**:
   * **Gemini (default)**: Uses Google GenAI API (configured via `GEMINI_API_KEY`).
   * **OpenAI-Compatible (Ollama/vLLM/OpenAI)**: Uses OpenAI API schema (configured via `OPENAI_API_KEY`, `OPENAI_API_BASE`/`base-url`, etc.).
@@ -75,11 +77,11 @@ The command will run locally, parse the manuscript, extract citations, resolve P
 
 ### 2.1 Component Architecture & Flow
 
-The AI-assisted cross-checking feature integrates into Lumina's existing structure as a subcommand under the `lit` group: `lumina lit ai-check`. It relies on a new internal package `internal/aicheck` which manages document retrieval, local caching, and communication with remote LLM providers.
+The AI-assisted cross-checking feature integrates into Lumina's structure as a dedicated command group `lumina ai` containing `check` and `index`. It relies on a new internal package `internal/aicheck` which manages document retrieval, local caching, and communication with remote LLM providers.
 
 ```mermaid
 graph TD
-    CLI["cmd/lit/aicheck.go\n(lumina lit ai-check)"]
+    CLI["cmd/ai/check.go & index.go\n(lumina ai check / index)"]
     MS["internal/manuscript\nLoad manuscript.md"]
     BIB["internal/bibtex\nParse references.bib"]
     
@@ -201,8 +203,8 @@ type LLMClient interface {
 }
 
 type VerificationResult struct {
-	Status    string   `json:"status"`    // "supported" | "contradicted" | "unsupported" | "neutral"
-	Reasoning string   `json:"reasoning"` // Explains why it matches/does not match
+	Status    string   `json:"status"`    // "supported" | "contradicted" | "unsupported" | "neutral" | "unknown"
+	Reasoning string   `json:"reasoning"` // Explains why it matches/does not match (or why it was skipped)
 	Passages  []string `json:"passages"`  // Passages that supported/contradicted the claim
 }
 
@@ -254,9 +256,14 @@ func (idx *Index) Search(query string, topN int) []string
 
 ### 2.5 CLI and API changes
 
-New subcommand:
-`lumina lit ai-check [flags]`
-* `--force` (clear caches under `.lumina/literature_cache/` and `.lumina/ai_cache.json`, re-extract all PDF texts, and re-run all LLM queries from scratch)
+New command group:
+`lumina ai`
+
+Subcommands:
+* `lumina ai check [flags]`
+  * `--force` / `-f` — clear caches and re-run all checks from scratch.
+* `lumina ai index [flags]`
+  * `--force` / `-f` — clear existing cache and re-index all PDFs from scratch.
 
 The command writes the output report to the hardcoded file `ai_check_report.md` in the manuscript root, and prints key findings to the console.
 
@@ -295,9 +302,15 @@ The command writes the output report to the hardcoded file `ai_check_report.md` 
 - [x] **Task 7: Implement LLM validation caching (`ai_cache.json`) and final coordinator wiring**
   - **Files:** `internal/aicheck/aicheck.go`, `internal/aicheck/cache/cache.go`
   - **Verification:** `go build ./internal/aicheck/...`
-- [x] **Task 8: Create CLI Cobra subcommand and reporting wiring**
+- [x] **Task 8: Create CLI Cobra subcommand `lumina ai check` and reporting wiring**
   - **Files:** `cmd/ai/ai.go`, `cmd/ai/check.go`, `cmd/root.go`, `internal/aicheck/report.go`
   - **Verification:** `make test`
+- [x] **Task 9: Create `lumina ai index` subcommand for literature pre-indexing**
+  - **Files:** `cmd/ai/index.go`
+  - **Verification:** `go build ./cmd/ai/...`
+- [x] **Task 10: Implement `unknown` status handling when paper text is not present to avoid LLM calls**
+  - **Files:** `internal/aicheck/aicheck.go`, `internal/aicheck/report.go`, `cmd/ai/check.go`, `internal/aicheck/aicheck_test.go`
+  - **Verification:** `go test ./internal/aicheck/...`
 
 ### 3.2 Risks & Mitigation
 

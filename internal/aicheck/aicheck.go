@@ -216,24 +216,32 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 					logx.Warn("Literature PDF missing for citation @%s", key)
 				}
 
+				if len(chunks) == 0 {
+					res.VerifyResults = append(res.VerifyResults, VerifyResult{
+						Paragraph:   para.Text,
+						CitationKey: key,
+						Status:      "unknown",
+						Reasoning:   "Literature paper text is not present (missing PDF or empty content).",
+					})
+					continue
+				}
+
 				// Search top chunks using selected search method
 				var passages []string
-				if len(chunks) > 0 {
-					if ms.Config.AI.SearchMethod == "embeddings" {
-						matches, err := SearchEmbeddings(ctx, client, ms.Config.AI.EmbeddingModel, para.Text, chunks, 5, ms.Config.AI.SearchThreshold)
-						if err != nil {
-							logx.Error("Semantic search failed: %v. Falling back to BM25.", err)
-							index := bm25.NewIndex(chunks)
-							passages = index.Search(para.Text, 5)
-						} else {
-							for _, m := range matches {
-								passages = append(passages, m.Text)
-							}
-						}
-					} else {
+				if ms.Config.AI.SearchMethod == "embeddings" {
+					matches, err := SearchEmbeddings(ctx, client, ms.Config.AI.EmbeddingModel, para.Text, chunks, 5, ms.Config.AI.SearchThreshold)
+					if err != nil {
+						logx.Error("Semantic search failed: %v. Falling back to BM25.", err)
 						index := bm25.NewIndex(chunks)
 						passages = index.Search(para.Text, 5)
+					} else {
+						for _, m := range matches {
+							passages = append(passages, m.Text)
+						}
 					}
+				} else {
+					index := bm25.NewIndex(chunks)
+					passages = index.Search(para.Text, 5)
 				}
 
 				// Render prompt once; key on (prompt, model) so template or model changes bust the cache.

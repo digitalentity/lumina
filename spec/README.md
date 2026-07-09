@@ -7,6 +7,7 @@
 
 | # | Feature | Status | Created | Updated | Spec |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| 003 | Web UI | 🔷 DESIGN | 2026-07-09 | 2026-07-09 | [spec.md](003_web_ui/spec.md) |
 
 ## Completed
 
