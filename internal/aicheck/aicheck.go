@@ -164,6 +164,7 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize LLM cache: %w", err)
 	}
+	defer client.Close()
 
 	// 2. Load BibTeX entries
 	bibPath := filepath.Join(ms.Root, "references.bib")

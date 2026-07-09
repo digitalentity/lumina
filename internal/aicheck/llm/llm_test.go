@@ -279,6 +279,7 @@ func TestCachingClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCachingClient error: %v", err)
 	}
+	defer client.Close()
 
 	prompt := "Hello LLM"
 
@@ -330,6 +331,7 @@ func TestCachingClient_Concurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCachingClient error: %v", err)
 	}
+	defer client.Close()
 
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
@@ -341,4 +343,38 @@ func TestCachingClient_Concurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestCachingClient_MalformedJSON(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lumina-llm-cache-malformed-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	base := &mockClient{
+		modelName: "test-model-malformed",
+		response:  `this is not valid JSON {malformed`,
+	}
+
+	client, err := NewCachingClient(base, tmpDir)
+	if err != nil {
+		t.Fatalf("NewCachingClient error: %v", err)
+	}
+	defer client.Close()
+
+	prompt := "Hello Malformed"
+
+	res, err := client.Call(context.Background(), prompt)
+	if err != nil {
+		t.Fatalf("Call error: %v", err)
+	}
+	if res != `this is not valid JSON {malformed` {
+		t.Errorf("unexpected response: %q", res)
+	}
+
+	// It should NOT be cached
+	if client.IsCached(prompt) {
+		t.Errorf("expected malformed JSON response to not be cached")
+	}
 }

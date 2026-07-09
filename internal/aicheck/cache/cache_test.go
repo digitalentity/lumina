@@ -99,36 +99,33 @@ func TestLLMCache(t *testing.T) {
 		t.Fatal("expected computed key to be non-empty")
 	}
 
-	// 1. Load empty cache
-	cache, err := LoadLLMCache(root)
+	// 1. Open cache DB
+	db, err := OpenAICache(root)
 	if err != nil {
-		t.Fatalf("LoadLLMCache error: %v", err)
+		t.Fatalf("OpenAICache error: %v", err)
 	}
-	if len(cache) != 0 {
-		t.Errorf("expected empty cache, got %d entries", len(cache))
-	}
+	defer db.Close()
 
-	// 2. Add entry and save
-	entry := LLMCacheEntry{
-		Response: `{"status": "supported", "reasoning": "It is supported.", "passages": ["supporting passage"]}`,
-	}
-	cache[key] = entry
-
-	if err := SaveLLMCache(root, cache); err != nil {
-		t.Fatalf("SaveLLMCache error: %v", err)
-	}
-
-	// 3. Load and verify
-	loadedCache, err := LoadLLMCache(root)
+	// 2. Get missing key
+	val, err := db.Get(key)
 	if err != nil {
-		t.Fatalf("LoadLLMCache error: %v", err)
+		t.Fatalf("Get error: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected empty string for missing key, got %q", val)
 	}
 
-	loadedEntry, exists := loadedCache[key]
-	if !exists {
-		t.Fatalf("expected key to exist in loaded cache")
+	// 3. Put and Get
+	expectedVal := `{"status": "supported"}`
+	if err := db.Put(key, expectedVal); err != nil {
+		t.Fatalf("Put error: %v", err)
 	}
-	if !reflect.DeepEqual(loadedEntry, entry) {
-		t.Errorf("loaded entry did not match saved. got %+v, want %+v", loadedEntry, entry)
+
+	val, err = db.Get(key)
+	if err != nil {
+		t.Fatalf("Get error: %v", err)
+	}
+	if val != expectedVal {
+		t.Errorf("expected %q, got %q", expectedVal, val)
 	}
 }

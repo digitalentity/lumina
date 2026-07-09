@@ -2,12 +2,14 @@ package cache
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
+	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -72,17 +74,21 @@ func SaveLitCache(root, pdfHash string, entry *LitCacheEntry) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-// ClearCache deletes the entire .lumina/literature_cache/ directory and the ai_cache.json.
+// ClearCache deletes the entire .lumina/literature_cache/ directory and the ai_cache.db.
 func ClearCache(root string) error {
 	litCacheDir := filepath.Join(root, ".lumina", "literature_cache")
 	if err := os.RemoveAll(litCacheDir); err != nil {
 		return err
 	}
 
-	aiCachePath := filepath.Join(root, ".lumina", "ai_cache.json")
+	aiCachePath := filepath.Join(root, ".lumina", "ai_cache.db")
 	if err := os.Remove(aiCachePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+
+	// Also remove the old ai_cache.json if present
+	aiCacheOld := filepath.Join(root, ".lumina", "ai_cache.json")
+	_ = os.Remove(aiCacheOld)
 
 	return nil
 }
@@ -91,9 +97,6 @@ func ClearCache(root string) error {
 type LLMCacheEntry struct {
 	Response string `json:"response"`
 }
-
-// LLMCache holds map from request hashes to cached verification results.
-type LLMCache map[string]LLMCacheEntry
 
 // ComputeLLMKey calculates the SHA-256 hash of the rendered prompt and model
 // name to serve as a cache key. Keying on the final prompt ensures any change
@@ -104,36 +107,75 @@ func ComputeLLMKey(prompt, model string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// LoadLLMCache reads the ai_cache.json file.
-func LoadLLMCache(root string) (LLMCache, error) {
-	path := filepath.Join(root, ".lumina", "ai_cache.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return make(LLMCache), nil
-		}
-		return nil, err
-	}
-
-	var cache LLMCache
-	if err := json.Unmarshal(data, &cache); err != nil {
-		return nil, err
-	}
-	return cache, nil
+// AICacheDB wraps a bbolt database handle for caching LLM responses.
+type AICacheDB struct {
+	db *bbolt.DB
 }
 
-// SaveLLMCache serializes the LLMCache to ai_cache.json.
-func SaveLLMCache(root string, cache LLMCache) error {
+const aiCacheBucket = "ai_cache"
+
+// OpenAICache opens the BoltDB database for the AI cache, creating it if necessary.
+func OpenAICache(root string) (*AICacheDB, error) {
 	dir := filepath.Join(root, ".lumina")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
+		return nil, err
+	}
+	path := filepath.Join(dir, "ai_cache.db")
+
+	opts := &bbolt.Options{
+		Timeout: 2 * time.Second,
 	}
 
-	data, err := json.MarshalIndent(cache, "", "  ")
+	db, err := bbolt.Open(path, 0600, opts)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to open AI cache DB (is another instance running?): %w", err)
 	}
 
-	path := filepath.Join(root, ".lumina", "ai_cache.json")
-	return os.WriteFile(path, data, 0644)
+	// Ensure the bucket exists
+	err = db.Update(func(tx *bbolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(aiCacheBucket))
+		return err
+	})
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create AI cache bucket: %w", err)
+	}
+
+	return &AICacheDB{db: db}, nil
+}
+
+// Close closes the database connection.
+func (c *AICacheDB) Close() error {
+	if c.db != nil {
+		return c.db.Close()
+	}
+	return nil
+}
+
+// Get retrieves a cached value by key. Returns empty string and nil error if not found.
+func (c *AICacheDB) Get(key string) (string, error) {
+	var val string
+	err := c.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(aiCacheBucket))
+		if b == nil {
+			return nil
+		}
+		data := b.Get([]byte(key))
+		if data != nil {
+			val = string(data)
+		}
+		return nil
+	})
+	return val, err
+}
+
+// Put writes a value by key.
+func (c *AICacheDB) Put(key string, val string) error {
+	return c.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(aiCacheBucket))
+		if b == nil {
+			return fmt.Errorf("ai cache bucket not found")
+		}
+		return b.Put([]byte(key), []byte(val))
+	})
 }
