@@ -92,3 +92,60 @@ func (g *GeminiClient) Call(ctx context.Context, prompt string) (string, error) 
 
 	return geminiResp.Candidates[0].Content.Parts[0].Text, nil
 }
+
+func (g *GeminiClient) Embed(ctx context.Context, text string, model string) ([]float32, error) {
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent?key=%s",
+		model,
+		g.APIKey,
+	)
+
+	type part struct {
+		Text string `json:"text"`
+	}
+	type content struct {
+		Parts []part `json:"parts"`
+	}
+	type request struct {
+		Content content `json:"content"`
+	}
+
+	reqBody := request{
+		Content: content{
+			Parts: []part{{Text: text}},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("gemini embed API call failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var geminiResp struct {
+		Embedding struct {
+			Values []float32 `json:"values"`
+		} `json:"embedding"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&geminiResp); err != nil {
+		return nil, err
+	}
+
+	return geminiResp.Embedding.Values, nil
+}

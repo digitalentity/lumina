@@ -215,11 +215,24 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 					logx.Warn("Literature PDF missing for citation @%s", key)
 				}
 
-				// Search top chunks using BM25
+				// Search top chunks using selected search method
 				var passages []string
 				if len(chunks) > 0 {
-					index := bm25.NewIndex(chunks)
-					passages = index.Search(para.Text, 5)
+					if ms.Config.AI.SearchMethod == "embeddings" {
+						matches, err := SearchEmbeddings(ctx, client, ms.Config.AI.EmbeddingModel, para.Text, chunks, 5, ms.Config.AI.SearchThreshold)
+						if err != nil {
+							logx.Error("Semantic search failed: %v. Falling back to BM25.", err)
+							index := bm25.NewIndex(chunks)
+							passages = index.Search(para.Text, 5)
+						} else {
+							for _, m := range matches {
+								passages = append(passages, m.Text)
+							}
+						}
+					} else {
+						index := bm25.NewIndex(chunks)
+						passages = index.Search(para.Text, 5)
+					}
 				}
 
 				// Render prompt once; key on (prompt, model) so template or model changes bust the cache.
@@ -291,9 +304,22 @@ func RunCrossCheck(ctx context.Context, ms *manuscript.Manuscript, force bool) (
 	// 5. Suggest supporting literature for uncited claims, searching across the
 	// whole library since there is no citation key to scope the search to.
 	if len(res.UncitedClaims) > 0 {
-		litIndex, chunkKeys := buildLiteratureIndex(ms, pe, bibMap, pdfMap)
+		var candidatesFinder func(query string) []llm.SuggestionCandidate
+
+		if ms.Config.AI.SearchMethod == "embeddings" {
+			chunks, chunkKeys := buildLiteratureChunks(ms, pe, bibMap, pdfMap)
+			candidatesFinder = func(query string) []llm.SuggestionCandidate {
+				return findSuggestionCandidatesEmbeddings(ctx, client, ms.Config.AI.EmbeddingModel, chunks, chunkKeys, bibMap, query, ms.Config.AI.SearchThreshold)
+			}
+		} else {
+			litIndex, chunkKeys := buildLiteratureIndex(ms, pe, bibMap, pdfMap)
+			candidatesFinder = func(query string) []llm.SuggestionCandidate {
+				return findSuggestionCandidates(litIndex, chunkKeys, bibMap, query)
+			}
+		}
+
 		for _, uc := range res.UncitedClaims {
-			candidates := findSuggestionCandidates(litIndex, chunkKeys, bibMap, uc.Assertion)
+			candidates := candidatesFinder(uc.Assertion)
 			if len(candidates) == 0 {
 				continue
 			}
@@ -417,12 +443,8 @@ func getOrExtractChunks(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, key, pd
 	return chunks
 }
 
-// buildLiteratureIndex builds a single BM25 index across every resolvable
-// literature PDF, not just cited ones, so uncited claims can be matched against
-// the full library rather than a single already-known paper. It returns the
-// index alongside a parallel slice mapping each indexed chunk back to the
-// citation key of the paper it came from.
-func buildLiteratureIndex(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, bibMap map[string]bibtex.Entry, pdfMap map[string]string) (*bm25.Index, []string) {
+// buildLiteratureChunks builds a flat list of literature chunks and their citation keys.
+func buildLiteratureChunks(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, bibMap map[string]bibtex.Entry, pdfMap map[string]string) ([]string, []string) {
 	keys := make([]string, 0, len(pdfMap))
 	for key := range pdfMap {
 		keys = append(keys, key)
@@ -448,6 +470,16 @@ func buildLiteratureIndex(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, bibMa
 		}
 	}
 
+	return chunks, chunkKeys
+}
+
+// buildLiteratureIndex builds a single BM25 index across every resolvable
+// literature PDF, not just cited ones, so uncited claims can be matched against
+// the full library rather than a single already-known paper. It returns the
+// index alongside a parallel slice mapping each indexed chunk back to the
+// citation key of the paper it came from.
+func buildLiteratureIndex(ms *manuscript.Manuscript, pe *pdf.PDFExtractor, bibMap map[string]bibtex.Entry, pdfMap map[string]string) (*bm25.Index, []string) {
+	chunks, chunkKeys := buildLiteratureChunks(ms, pe, bibMap, pdfMap)
 	return bm25.NewIndex(chunks), chunkKeys
 }
 
@@ -472,6 +504,49 @@ func findSuggestionCandidates(index *bm25.Index, chunkKeys []string, bibMap map[
 		}
 		if len(passagesByKey[key]) < suggestCandidatePassages {
 			passagesByKey[key] = append(passagesByKey[key], r.Text)
+		}
+	}
+
+	candidates := make([]llm.SuggestionCandidate, 0, len(order))
+	for _, key := range order {
+		bibStr := ""
+		if e, ok := bibMap[key]; ok {
+			bibStr = FormatEntry(e)
+		}
+		candidates = append(candidates, llm.SuggestionCandidate{
+			CitationKey: key,
+			Bibtex:      bibStr,
+			Passages:    passagesByKey[key],
+		})
+	}
+	return candidates
+}
+
+// findSuggestionCandidatesEmbeddings searches the combined literature chunks using semantic embeddings
+// for passages relevant to a claim, groups the results by source paper, and returns up to
+// suggestCandidatePapers candidates each carrying up to suggestCandidatePassages
+// supporting passages, ranked by cosine similarity and filtered by threshold.
+func findSuggestionCandidatesEmbeddings(ctx context.Context, client llm.Client, model string, chunks []string, chunkKeys []string, bibMap map[string]bibtex.Entry, query string, threshold float64) []llm.SuggestionCandidate {
+	matches, err := SearchEmbeddings(ctx, client, model, query, chunks, suggestSearchPoolSize, threshold)
+	if err != nil {
+		logx.Error("Semantic suggestion search failed: %v", err)
+		return nil
+	}
+
+	var order []string
+	selected := make(map[string]bool)
+	passagesByKey := make(map[string][]string)
+	for _, m := range matches {
+		key := chunkKeys[m.ID]
+		if !selected[key] {
+			if len(order) >= suggestCandidatePapers {
+				continue
+			}
+			selected[key] = true
+			order = append(order, key)
+		}
+		if len(passagesByKey[key]) < suggestCandidatePassages {
+			passagesByKey[key] = append(passagesByKey[key], m.Text)
 		}
 	}
 

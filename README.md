@@ -139,6 +139,15 @@ formats:                            # formats built by "lumina build all"
   - zip
 runner:      host                   # host | docker
 tools-image: lumina-tools:latest    # used when runner: docker
+
+ai:
+  provider:         gemini              # gemini | openai
+  model:            gemini-2.5-flash    # LLM model name
+  base-url:         ""                  # optional custom endpoint base URL
+  temperature:      0.2                 # temperature for checks
+  search-method:    bm25                # bm25 | embeddings
+  search-threshold: 0.0                 # minimum score/similarity filter
+  embedding-model:  gemini-embedding-2  # embedding model name
 ```
 
 ### Runner: host vs. Docker

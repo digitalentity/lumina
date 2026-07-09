@@ -89,3 +89,57 @@ func (o *OpenAIClient) Call(ctx context.Context, prompt string) (string, error) 
 
 	return openaiResp.Choices[0].Message.Content, nil
 }
+
+func (o *OpenAIClient) Embed(ctx context.Context, text string, model string) ([]float32, error) {
+	url := fmt.Sprintf("%s/embeddings", strings.TrimSuffix(o.BaseURL, "/"))
+
+	type request struct {
+		Input string `json:"input"`
+		Model string `json:"model"`
+	}
+
+	reqBody := request{
+		Input: text,
+		Model: model,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if o.APIKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", o.APIKey))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("openai embed API call failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var openaiResp struct {
+		Data []struct {
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&openaiResp); err != nil {
+		return nil, err
+	}
+
+	if len(openaiResp.Data) == 0 {
+		return nil, fmt.Errorf("openai embed API returned empty data list")
+	}
+
+	return openaiResp.Data[0].Embedding, nil
+}

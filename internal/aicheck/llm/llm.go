@@ -49,6 +49,9 @@ type Client interface {
 
 	// Call sends a pre-rendered prompt and returns the raw JSON response string.
 	Call(ctx context.Context, prompt string) (string, error)
+
+	// Embed returns the vector embedding for the given text using the specified embedding model.
+	Embed(ctx context.Context, text string, model string) ([]float32, error)
 }
 
 // NewClient returns an LLM client based on the parsed lumina config.

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"lumina/cmd/ai"
 	"lumina/cmd/build"
+	"lumina/cmd/debug"
 	"lumina/cmd/lit"
 	"lumina/cmd/text"
 	"lumina/internal/logx"
@@ -39,4 +40,5 @@ func init() {
 	rootCmd.AddCommand(ai.AICmd)
 	rootCmd.AddCommand(build.BuildCmd)
 	rootCmd.AddCommand(text.TextCmd)
+	rootCmd.AddCommand(debug.DebugCmd)
 }

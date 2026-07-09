@@ -1,0 +1,42 @@
+# Example lumina.yaml configuration file
+
+# PDF rendering engine used by pandoc (e.g. xelatex, pdflatex, lualatex)
+pdf-engine: xelatex
+
+# Formats built by "lumina build all"
+formats:
+  - pdf
+  - docx
+  - tex
+  - zip
+
+# Tool execution runner: "host" (uses host PATH) or "docker" (runs tools inside Docker)
+runner: host
+
+# Docker image used when runner is set to "docker"
+tools-image: lumina-tools:latest
+
+# Generative AI configurations for "lumina ai check"
+ai:
+  # Provider: "gemini" or "openai"
+  provider: gemini
+
+  # LLM model name for claim verification and uncited claim analysis
+  model: gemini-2.5-flash
+
+  # Optional base URL (useful for OpenAI-compatible endpoints like Ollama)
+  # base-url: "http://localhost:11434/v1"
+
+  # Temperature for factual checks (lower values recommended)
+  temperature: 0.2
+
+  # Document chunk search/matching method: "bm25" (lexical) or "embeddings" (semantic similarity)
+  search-method: bm25
+
+  # Similarity/score cutoff threshold. Matches below this threshold are discarded.
+  # For BM25, this is the BM25 score. For embeddings, this is the cosine similarity (0.0 to 1.0).
+  search-threshold: 0.0
+
+  # Model name used to generate vector embeddings (only relevant if search-method is "embeddings")
+  # Defaults: "gemini-embedding-2" for gemini, "text-embedding-3-small" for openai.
+  embedding-model: gemini-embedding-2

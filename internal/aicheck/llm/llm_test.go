@@ -2,8 +2,10 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"lumina/internal/config"
@@ -257,6 +259,10 @@ func (m *mockClient) Call(ctx context.Context, prompt string) (string, error) {
 	return m.response, m.err
 }
 
+func (m *mockClient) Embed(ctx context.Context, text string, model string) ([]float32, error) {
+	return []float32{0.1, 0.2}, nil
+}
+
 func TestCachingClient(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "lumina-llm-cache-test-*")
 	if err != nil {
@@ -306,4 +312,33 @@ func TestCachingClient(t *testing.T) {
 	if base.calls != 1 {
 		t.Errorf("expected no additional base call, got %d", base.calls)
 	}
+}
+
+func TestCachingClient_Concurrent(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "lumina-llm-cache-concurrent-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	base := &mockClient{
+		modelName: "test-model-concurrent",
+		response:  `{"test": "response"}`,
+	}
+
+	client, err := NewCachingClient(base, tmpDir)
+	if err != nil {
+		t.Fatalf("NewCachingClient error: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			_, _ = client.Embed(context.Background(), fmt.Sprintf("chunk-%d", idx), "model")
+			_, _ = client.Call(context.Background(), fmt.Sprintf("prompt-%d", idx))
+		}(i)
+	}
+	wg.Wait()
 }
