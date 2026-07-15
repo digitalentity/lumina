@@ -134,6 +134,43 @@ func TestStageStyleFilesNoPublishDirCleansOrphans(t *testing.T) {
 	}
 }
 
+func TestStageStyleFilesStagesTemplate(t *testing.T) {
+	ms, publishDir := newStyleTestManuscript(t)
+	writeTestFile(t, filepath.Join(publishDir, "template.tex"), "% template v1")
+
+	if err := stageStyleFiles(ms); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got, err := os.ReadFile(filepath.Join(ms.LuminaBuildDir(), "template.tex"))
+	if err != nil {
+		t.Fatalf("staged template missing: %v", err)
+	}
+	if string(got) != "% template v1" {
+		t.Errorf("staged content mismatch: %q", got)
+	}
+
+	if path := TemplatePath(ms); path != filepath.Join(ms.LuminaBuildDir(), "template.tex") {
+		t.Errorf("TemplatePath returned %q", path)
+	}
+}
+
+func TestStageStyleFilesRemovesOrphanedTemplate(t *testing.T) {
+	ms, _ := newStyleTestManuscript(t)
+	writeTestFile(t, filepath.Join(ms.LuminaBuildDir(), "template.tex"), "% stale")
+
+	if err := stageStyleFiles(ms); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "template.tex")); !os.IsNotExist(err) {
+		t.Error("orphaned template.tex should have been removed")
+	}
+	if path := TemplatePath(ms); path != "" {
+		t.Errorf("TemplatePath should be empty without publish/template.tex, got %q", path)
+	}
+}
+
 func TestIsStaleTracksStyleFiles(t *testing.T) {
 	root := t.TempDir()
 	mPath := filepath.Join(root, "manuscript.md")
@@ -212,5 +249,89 @@ func TestIsStaleTracksStyleFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "journal.sty")); !os.IsNotExist(err) {
 		t.Error("staged journal.sty should be removed after source deletion")
+	}
+}
+
+func TestIsStaleTracksTemplate(t *testing.T) {
+	root := t.TempDir()
+	mPath := filepath.Join(root, "manuscript.md")
+	writeTestFile(t, mPath, "# Title")
+
+	publishDir := filepath.Join(root, "publish")
+	if err := os.MkdirAll(publishDir, 0755); err != nil {
+		t.Fatalf("failed to create publish dir: %v", err)
+	}
+	tplPath := filepath.Join(publishDir, "template.tex")
+	writeTestFile(t, tplPath, "% template v1")
+
+	ms := &manuscript.Manuscript{
+		Root:      root,
+		Source:    mPath,
+		LuminaDir: filepath.Join(root, ".lumina"),
+		BuildDir:  filepath.Join(root, "_build"),
+		Stem:      "manuscript",
+		RawMeta:   map[string]any{},
+		Runner:    &MockRunner{},
+	}
+
+	if err := Run(ms, Options{}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if path := TemplatePath(ms); path == "" {
+		t.Fatal("expected TemplatePath to be set after Run")
+	}
+
+	stale, err := IsStale(ms)
+	if err != nil {
+		t.Fatalf("IsStale failed: %v", err)
+	}
+	if stale {
+		t.Error("expected not stale right after Run")
+	}
+
+	// Touch the template: stale.
+	time.Sleep(10 * time.Millisecond)
+	writeTestFile(t, tplPath, "% template v2")
+	stale, err = IsStale(ms)
+	if err != nil {
+		t.Fatalf("IsStale failed: %v", err)
+	}
+	if !stale {
+		t.Error("expected stale after template modification")
+	}
+
+	// Re-run clears staleness and restages the new content.
+	if err := Run(ms, Options{Force: true}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	got, err := os.ReadFile(TemplatePath(ms))
+	if err != nil {
+		t.Fatalf("failed to read staged template: %v", err)
+	}
+	if string(got) != "% template v2" {
+		t.Errorf("expected restaged content %% template v2, got %q", got)
+	}
+
+	// Delete the source template: stale (set mismatch, mtime blind spot).
+	if err := os.Remove(tplPath); err != nil {
+		t.Fatalf("failed to remove template: %v", err)
+	}
+	stale, err = IsStale(ms)
+	if err != nil {
+		t.Fatalf("IsStale failed: %v", err)
+	}
+	if !stale {
+		t.Error("expected stale after template deletion")
+	}
+
+	// Re-run removes the orphaned staged copy.
+	if err := Run(ms, Options{Force: true}); err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if path := TemplatePath(ms); path != "" {
+		t.Errorf("TemplatePath should be empty after source deletion, got %q", path)
+	}
+	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "template.tex")); !os.IsNotExist(err) {
+		t.Error("staged template.tex should be removed after source deletion")
 	}
 }

@@ -2,7 +2,6 @@ package build
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/logx"
@@ -34,26 +33,19 @@ var pdfCmd = &cobra.Command{
 			engine = pdfEngineOverride
 		}
 
-		// 3. Check for custom template
-		templatePath := filepath.Join(ms.Root, "publish", "template.tex")
-		var template string
-		if _, err := os.Stat(templatePath); err == nil {
-			template = templatePath
-		}
-
-		// 4. Ensure build directory exists
+		// 3. Ensure build directory exists
 		if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
 			return err
 		}
 
-		// 5. Construct Pandoc Invocation
+		// 4. Construct Pandoc Invocation
 		inv := &pandoc.Invocation{
 			Input:        ms.IntermediateSource(),
 			MetadataFile: ms.IntermediateMeta(),
 			Output:       ms.BuildPath("pdf"),
 			Filters:      []string{"pandoc-acro", "pandoc-crossref"},
 			ExtraFlags:   []string{"--citeproc", "--pdf-engine=" + engine},
-			Template:     template,
+			Template:     preprocess.TemplatePath(ms),
 		}
 
 		// Check if tools are present

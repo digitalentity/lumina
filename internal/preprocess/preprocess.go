@@ -251,11 +251,15 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 		}
 	}
 
-	// Check LaTeX style files: modified sources, plus staged/source set
-	// mismatch (an mtime check cannot detect a deleted source file).
+	// Check LaTeX style files and template.tex: modified sources, plus
+	// staged/source set mismatch (an mtime check cannot detect a deleted
+	// source file).
 	styleNames, err := ListStyleFiles(ms.Root)
 	if err != nil {
 		return false, err
+	}
+	if _, err := os.Stat(filepath.Join(ms.Root, "publish", templateFileName)); err == nil {
+		styleNames = append(styleNames, templateFileName)
 	}
 	for _, name := range styleNames {
 		info, err := os.Stat(filepath.Join(ms.Root, "publish", name))
@@ -274,7 +278,10 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 		return false, err
 	}
 	for _, f := range staged {
-		if f.IsDir() || !slices.Contains(styleExtensions, filepath.Ext(f.Name())) {
+		if f.IsDir() {
+			continue
+		}
+		if !slices.Contains(styleExtensions, filepath.Ext(f.Name())) && f.Name() != templateFileName {
 			continue
 		}
 		if !slices.Contains(styleNames, f.Name()) {

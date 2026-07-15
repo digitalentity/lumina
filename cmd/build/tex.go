@@ -2,7 +2,6 @@ package build
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/logx"
@@ -25,12 +24,6 @@ var texCmd = &cobra.Command{
 			return err
 		}
 
-		templatePath := filepath.Join(ms.Root, "publish", "template.tex")
-		var template string
-		if _, err := os.Stat(templatePath); err == nil {
-			template = templatePath
-		}
-
 		if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
 			return err
 		}
@@ -41,7 +34,7 @@ var texCmd = &cobra.Command{
 			Output:       ms.BuildPath("tex"),
 			Filters:      []string{"pandoc-acro", "pandoc-crossref"},
 			ExtraFlags:   []string{"--citeproc", "-s"},
-			Template:     template,
+			Template:     preprocess.TemplatePath(ms),
 		}
 
 		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-acro", "pandoc-crossref"); err != nil {
