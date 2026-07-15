@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 
 	"gopkg.in/yaml.v3"
@@ -186,6 +187,11 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		}
 	}
 
+	// 9. Sync LaTeX style files (publish/*.sty|*.cls|*.bst) to .lumina/build/
+	if err := stageStyleFiles(ms); err != nil {
+		return err
+	}
+
 	logx.Success("preprocessed manuscript written to %s", ms.IntermediateSource())
 	return nil
 }
@@ -242,6 +248,37 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 			if info.ModTime().After(destTime) {
 				return true, nil
 			}
+		}
+	}
+
+	// Check LaTeX style files: modified sources, plus staged/source set
+	// mismatch (an mtime check cannot detect a deleted source file).
+	styleNames, err := ListStyleFiles(ms.Root)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range styleNames {
+		info, err := os.Stat(filepath.Join(ms.Root, "publish", name))
+		if err != nil {
+			return false, err
+		}
+		if info.ModTime().After(destTime) {
+			return true, nil
+		}
+		if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), name)); os.IsNotExist(err) {
+			return true, nil
+		}
+	}
+	staged, err := os.ReadDir(ms.LuminaBuildDir())
+	if err != nil {
+		return false, err
+	}
+	for _, f := range staged {
+		if f.IsDir() || !slices.Contains(styleExtensions, filepath.Ext(f.Name())) {
+			continue
+		}
+		if !slices.Contains(styleNames, f.Name()) {
+			return true, nil
 		}
 	}
 

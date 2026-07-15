@@ -10,6 +10,7 @@ import (
 	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
+	"lumina/internal/preprocess"
 )
 
 var zipCmd = &cobra.Command{
@@ -30,6 +31,12 @@ var zipCmd = &cobra.Command{
 			if err := texCmd.RunE(cmd, args); err != nil {
 				return err
 			}
+		}
+
+		// 1.5. Re-sync staged files (e.g. LaTeX style files) even when the
+		// TeX source itself is fresh; Run is a no-op unless stale/forced.
+		if err := preprocess.Run(ms, preprocess.Options{Force: forceFlag}); err != nil {
+			return err
 		}
 
 		// 2. Stage manuscript.tex inside .lumina/build
@@ -63,6 +70,15 @@ var zipCmd = &cobra.Command{
 			"references.bib",
 			"figures",
 		}
+
+		// LaTeX style files from publish/ are already staged in
+		// .lumina/build by preprocess; ship them so the archive compiles
+		// standalone at the journal.
+		styleFiles, err := preprocess.ListStyleFiles(ms.Root)
+		if err != nil {
+			return err
+		}
+		zipArgs = append(zipArgs, styleFiles...)
 
 		logx.Step("assembling ZIP submission archive...")
 		if err := ms.Runner.Run("zip", zipArgs, ms.LuminaBuildDir()); err != nil {

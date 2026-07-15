@@ -42,6 +42,7 @@ resolved relative to the current working directory.
 | `literature/`       | User-managed PDF library with same-stem `.bib` sidecars. Read-only to lumina. |
 | `figures/`          | Static images/diagrams to include in the rendered paper. |
 | `publish/template.tex` | Optional custom pandoc LaTeX template, used by `build pdf`/`build tex` if present. |
+| `publish/*.sty`, `*.cls`, `*.bst` | Optional LaTeX style/class/bibliography-style files (e.g. a journal submission kit). Staged into the build directory so the template can `\usepackage`/`\documentclass` them, and included in the `build zip` archive. Flat files only — subdirectories of `publish/` are ignored. |
 | `publish/reference.docx` | Optional custom Word reference doc, used by `build docx` if present. |
 | `.vale.ini`          | Vale prose-linter config, discovered in the manuscript root. |
 | `lumina.yaml`        | Tool configuration (see below). |
@@ -73,7 +74,7 @@ to be present.
 | `lumina build pdf [--pdf-engine ENGINE] [--force/-f]` | Build `_build/manuscript.pdf`. Re-runs `preprocess` first if stale. |
 | `lumina build docx [--force/-f]` | Build `_build/manuscript.docx`. |
 | `lumina build tex [--force/-f]` | Build `_build/manuscript.tex` (standalone LaTeX source — useful for Overleaf, or as input to `zip`). |
-| `lumina build zip [--force/-f]` | Build `_build/manuscript.zip`: `.tex` + `references.bib` + `figures/`. Rebuilds the `.tex` first if it's stale (or `--force`). |
+| `lumina build zip [--force/-f]` | Build `_build/manuscript.zip`: `.tex` + `references.bib` + `figures/` + any `publish/` style files. Rebuilds the `.tex` first if it's stale (or `--force`). |
 | `lumina build all [--force/-f]` | Citation check, then preprocess, then build every format listed in `lumina.yaml`'s `formats` (default: `pdf docx tex zip`). This is also what plain `lumina build` (no subcommand) runs. |
 | `lumina build pub` | Pre-submission gate: citation check → Vale lint → word-limit check → TODO scan, all fail-fast. On success, builds PDF + ZIP and copies them to dated files: `_build/manuscript_<YYYY-MM-DD>.{pdf,zip}`. |
 
