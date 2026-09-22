@@ -9,8 +9,11 @@ import (
 
 var fmtCmd = &cobra.Command{
 	Use:   "fmt <target>",
-	Short: "Format manuscript.md using prettier",
-	Args:  cobra.ExactArgs(1),
+	Short: "Format manuscript markdown using Prettier",
+	Long: `Format src/<target>/manuscript.md in-place using Prettier
+for consistent Markdown layout.`,
+	Example: `  lumina text fmt paper1`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ms, err := manuscript.Load(args[0])
 		if err != nil {

@@ -10,8 +10,15 @@ import (
 
 var initCmd = &cobra.Command{
 	Use:   "init <target>",
-	Short: "Scaffold a new manuscript target (and project files if missing)",
-	Args:  cobra.ExactArgs(1),
+	Short: "Scaffold a new manuscript target and project files",
+	Long: `Scaffold a new manuscript target under src/<target>/.
+
+If project-level files (lumina.yaml, csl/, templates/default/, .vale.ini, .gitignore)
+are missing from the current directory, they are initialized as well.
+Existing files are never overwritten.`,
+	Example: `  lumina init paper1
+  lumina init journal-submission`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := args[0]
 		cwd, err := os.Getwd()
@@ -24,8 +31,4 @@ var initCmd = &cobra.Command{
 		logx.Success("target %q scaffolded in src/%s", target, target)
 		return nil
 	},
-}
-
-func init() {
-	rootCmd.AddCommand(initCmd)
 }

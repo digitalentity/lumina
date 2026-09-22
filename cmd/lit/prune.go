@@ -19,11 +19,15 @@ var (
 
 var pruneCmd = &cobra.Command{
 	Use:   "prune <target>",
-	Short: "Prune unused bibliography entries from references.bib in-place",
-	Long: `Prune unused bibliography entries from references.bib in-place.
+	Short: "Prune unused bibliography entries from references.bib",
+	Long: `Prune unused bibliography entries from src/<target>/references.bib in-place.
 
 Dry-run by default: reports which entries would be removed without
-touching references.bib. Pass --no-dry-run to actually rewrite the file.`,
+touching references.bib. Pass --no-dry-run to actually rewrite the file,
+and --yes to skip the confirmation prompt.`,
+	Example: `  lumina lit prune paper1
+  lumina lit prune paper1 --no-dry-run
+  lumina lit prune paper1 --no-dry-run --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ms, err := manuscript.Load(args[0])

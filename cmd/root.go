@@ -14,12 +14,26 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "lumina",
 	Short: "Academic writing pipeline — build, lint, and publish manuscripts",
-	Long: `Lumina manages the academic writing pipeline for a manuscript directory.
+	Long: `Lumina manages the academic writing pipeline across multiple manuscript targets.
 
-Run from within a manuscript directory (one containing manuscript.md).
-Use 'lumina init' to scaffold a new manuscript.`,
-	SilenceUsage:  true,
+All commands operate from the project root directory, targeting manuscripts
+located in src/<target>/. Project-level configuration (lumina.yaml, csl/,
+templates/, .vale.ini) is shared across all targets.
+
+Use 'lumina init <target>' to scaffold a new manuscript target.`,
+	Example: `  lumina init paper1
+  lumina build paper1 --pdf
+  lumina lit check paper1
+  lumina text words paper1`,
 	SilenceErrors: true,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		cmd.SilenceUsage = true
+	},
+}
+
+// RootCmd returns the root cobra command.
+func RootCmd() *cobra.Command {
+	return rootCmd
 }
 
 // Execute runs the root command, printing a colorful error and exiting
@@ -34,7 +48,27 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(lit.LitCmd)
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "manuscript",
+		Title: "Manuscript Commands:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "project",
+		Title: "Project Commands:",
+	})
+
+	build.BuildCmd.GroupID = "manuscript"
+	lit.LitCmd.GroupID = "manuscript"
+	text.TextCmd.GroupID = "manuscript"
+
 	rootCmd.AddCommand(build.BuildCmd)
+	rootCmd.AddCommand(lit.LitCmd)
 	rootCmd.AddCommand(text.TextCmd)
+
+	initCmd.GroupID = "project"
+	cleanCmd.GroupID = "project"
+	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(cleanCmd)
+
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }

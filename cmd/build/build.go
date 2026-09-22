@@ -25,9 +25,20 @@ var (
 
 // BuildCmd is the command for compilation tasks.
 var BuildCmd = &cobra.Command{
-	Use:   "build <target> [flags]",
-	Short: "Compile manuscript (all formats by default, or specific formats via flags)",
-	Args:  cobra.ExactArgs(1),
+	Use:   "build <target>",
+	Short: "Compile manuscript target into output artifacts",
+	Long: `Compile manuscript target into one or more output formats (PDF, DOCX, TeX, ZIP).
+
+By default, builds all formats configured in lumina.yaml's 'formats' list.
+Pass format flags (--pdf, --docx, --tex, --zip) to compile specific formats.
+Pass --pub to run pre-submission validation gates before building release artifacts.`,
+	Example: `  lumina build paper1
+  lumina build paper1 --pdf
+  lumina build paper1 --docx --force
+  lumina build paper1 --pdf-engine lualatex
+  lumina build paper1 --pub
+  lumina build paper1 --preprocess`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		target := args[0]
 		ms, err := manuscript.Load(target)
@@ -108,12 +119,12 @@ var BuildCmd = &cobra.Command{
 }
 
 func init() {
-	BuildCmd.Flags().BoolVar(&pdfFlag, "pdf", false, "Build PDF format")
-	BuildCmd.Flags().BoolVar(&docxFlag, "docx", false, "Build DOCX format")
-	BuildCmd.Flags().BoolVar(&texFlag, "tex", false, "Build standalone TeX source")
-	BuildCmd.Flags().BoolVar(&zipFlag, "zip", false, "Build ZIP submission archive")
-	BuildCmd.Flags().BoolVar(&pubFlag, "pub", false, "Run pre-submission validation gates")
+	BuildCmd.Flags().BoolVar(&pdfFlag, "pdf", false, "Build PDF format (build/<target>.pdf)")
+	BuildCmd.Flags().BoolVar(&docxFlag, "docx", false, "Build DOCX format (build/<target>.docx)")
+	BuildCmd.Flags().BoolVar(&texFlag, "tex", false, "Build standalone TeX source (build/<target>.tex)")
+	BuildCmd.Flags().BoolVar(&zipFlag, "zip", false, "Build ZIP submission archive (build/<target>.zip)")
+	BuildCmd.Flags().BoolVar(&pubFlag, "pub", false, "Run pre-submission validation gates and release build")
 	BuildCmd.Flags().BoolVar(&preprocessFlag, "preprocess", false, "Run only preprocessing and staging")
-	BuildCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force rebuild and re-render diagrams")
+	BuildCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force rebuild and re-render diagrams (bypass caches)")
 	BuildCmd.Flags().StringVar(&pdfEngineOverride, "pdf-engine", "", "Override PDF engine (e.g. xelatex, lualatex)")
 }

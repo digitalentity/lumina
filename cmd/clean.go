@@ -11,7 +11,14 @@ import (
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove all lumina-managed generated content (.lumina/ and build/)",
+	Short: "Remove generated build artifacts and staging files",
+	Long: `Remove all lumina-managed generated content:
+  - .lumina/ temporary build and staging cache
+  - build/ output artifacts directory
+
+Leaves targets under src/ and project configuration untouched.`,
+	Example: `  lumina clean`,
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -32,8 +39,4 @@ var cleanCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-func init() {
-	rootCmd.AddCommand(cleanCmd)
 }

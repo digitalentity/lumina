@@ -11,8 +11,13 @@ import (
 
 var wordsCmd = &cobra.Command{
 	Use:   "words <target>",
-	Short: "Count words in the manuscript",
-	Args:  cobra.ExactArgs(1),
+	Short: "Count words in manuscript and check against word limit",
+	Long: `Count prose words in src/<target>/manuscript.md using pandoc plain text rendering.
+
+If 'wordlimit' is configured in src/<target>/metadata.yaml, compares
+the word count against the limit and warns if exceeded.`,
+	Example: `  lumina text words paper1`,
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ms, err := manuscript.Load(args[0])
 		if err != nil {
