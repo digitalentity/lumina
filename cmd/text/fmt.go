@@ -8,10 +8,11 @@ import (
 )
 
 var fmtCmd = &cobra.Command{
-	Use:   "fmt",
+	Use:   "fmt <target>",
 	Short: "Format manuscript.md using prettier",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		ms, err := manuscript.Load(args[0])
 		if err != nil {
 			return err
 		}
@@ -21,7 +22,7 @@ var fmtCmd = &cobra.Command{
 		}
 
 		logx.Step("formatting manuscript.md...")
-		if err := ms.Runner.Run("prettier", []string{"--write", "manuscript.md"}, ms.Root); err != nil {
+		if err := ms.Runner.Run("prettier", []string{"--write", ms.RelSource()}, ms.Root); err != nil {
 			return err
 		}
 

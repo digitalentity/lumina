@@ -3,30 +3,32 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/logx"
-	"lumina/internal/manuscript"
 )
 
 var cleanCmd = &cobra.Command{
 	Use:   "clean",
-	Short: "Remove all lumina-managed generated content (.lumina/ and _build/)",
+	Short: "Remove all lumina-managed generated content (.lumina/ and build/)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
 
-		if err := os.RemoveAll(ms.LuminaDir); err != nil {
+		luminaDir := filepath.Join(cwd, ".lumina")
+		if err := os.RemoveAll(luminaDir); err != nil {
 			return fmt.Errorf("failed to remove .lumina: %w", err)
 		}
-		logx.Success("removed %s", ms.LuminaDir)
+		logx.Success("removed %s", luminaDir)
 
-		if err := os.RemoveAll(ms.BuildDir); err != nil {
-			return fmt.Errorf("failed to remove _build: %w", err)
+		buildDir := filepath.Join(cwd, "build")
+		if err := os.RemoveAll(buildDir); err != nil {
+			return fmt.Errorf("failed to remove build: %w", err)
 		}
-		logx.Success("removed %s", ms.BuildDir)
+		logx.Success("removed %s", buildDir)
 
 		return nil
 	},

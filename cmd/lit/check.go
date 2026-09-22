@@ -10,10 +10,11 @@ import (
 )
 
 var checkCmd = &cobra.Command{
-	Use:   "check",
+	Use:   "check <target>",
 	Short: "Verify citation integrity between manuscript.md and references.bib",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		ms, err := manuscript.Load(args[0])
 		if err != nil {
 			return err
 		}

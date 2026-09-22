@@ -9,17 +9,19 @@ import (
 )
 
 var initCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Scaffold a new manuscript structure in the current directory",
+	Use:   "init <target>",
+	Short: "Scaffold a new manuscript target (and project files if missing)",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		target := args[0]
 		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		if err := scaffold.Init(cwd); err != nil {
+		if err := scaffold.Init(cwd, target); err != nil {
 			return err
 		}
-		logx.Success("manuscript scaffolded in %s", cwd)
+		logx.Success("target %q scaffolded in src/%s", target, target)
 		return nil
 	},
 }

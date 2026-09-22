@@ -37,14 +37,21 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return nil
 	}
 
-	// 1. Ensure .lumina/build/ and .lumina/build/figures/ exist
+	// 1. Clear and recreate common intermediate build directory (.lumina/build)
 	buildDir := ms.LuminaBuildDir()
+	_ = os.RemoveAll(buildDir)
 	if err := os.MkdirAll(buildDir, 0755); err != nil {
 		return fmt.Errorf("failed to create intermediate build directory: %w", err)
 	}
 	luminaFiguresDir := filepath.Join(buildDir, "figures")
 	if err := os.MkdirAll(luminaFiguresDir, 0755); err != nil {
 		return fmt.Errorf("failed to create intermediate figures directory: %w", err)
+	}
+
+	// Persistent Mermaid cache directory (.lumina/figures)
+	persistentMermaidDir := filepath.Join(ms.LuminaDir, "figures")
+	if err := os.MkdirAll(persistentMermaidDir, 0755); err != nil {
+		return fmt.Errorf("failed to create figures cache directory: %w", err)
 	}
 
 	// 2. Read source manuscript.md
@@ -58,20 +65,20 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 
 	// 4. Render Mermaid diagrams
 	for _, mmd := range mmds {
-		_, statErr := os.Stat(mmd.path)
+		cachePath := filepath.Join(persistentMermaidDir, filepath.Base(mmd.path))
+		_, statErr := os.Stat(cachePath)
 		if os.IsNotExist(statErr) || opts.Force {
 			logx.Step("rendering Mermaid diagram %s...", filepath.Base(mmd.path))
-			if err := RenderMermaid(ms.Runner, mmd.code, mmd.path, buildDir); err != nil {
+			if err := RenderMermaid(ms.Runner, mmd.code, cachePath, ms.LuminaDir); err != nil {
 				return fmt.Errorf("failed to render Mermaid diagram: %w", err)
 			}
 		} else {
 			logx.Info("Mermaid diagram %s unchanged, using cache", filepath.Base(mmd.path))
 		}
+		if err := copyFile(cachePath, mmd.path); err != nil {
+			return fmt.Errorf("failed to stage Mermaid diagram: %w", err)
+		}
 	}
-
-	// Acronym expansion (+KEY) is handled by the pandoc-acro filter at
-	// build time, using the acronyms map forwarded in metadata.yaml — not
-	// by lumina itself. See internal/config.LoadMetadata.
 
 	// Sort all replacements by start offset
 	sort.Slice(replacements, func(i, j int) bool {
@@ -83,7 +90,6 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	prev := 0
 	for _, r := range replacements {
 		if r.start < prev {
-			// Overlapping replacements, shouldn't happen with our AST walk
 			continue
 		}
 		out.Write(content[prev:r.start])
@@ -92,18 +98,24 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	}
 	out.Write(content[prev:])
 
-	// Write preprocessed manuscript to .lumina/manuscript.md
+	// Write preprocessed manuscript to .lumina/build/manuscript.md
 	err = os.WriteFile(ms.IntermediateSource(), out.Bytes(), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write preprocessed manuscript: %w", err)
 	}
 
-	// 5.5 Copy referenced CSL and bibliography files to .lumina/build/ and make paths local
+	// 5. Copy referenced CSL and bibliography files to .lumina/build/ and make paths local
 	if cslVal, ok := ms.RawMeta["csl"]; ok {
 		if cslPath, ok := cslVal.(string); ok && cslPath != "" {
 			srcPath := cslPath
 			if !filepath.IsAbs(cslPath) {
-				srcPath = filepath.Join(ms.Root, cslPath)
+				if _, err := os.Stat(filepath.Join(ms.TargetDir, cslPath)); err == nil {
+					srcPath = filepath.Join(ms.TargetDir, cslPath)
+				} else if _, err := os.Stat(filepath.Join(ms.CSLDir, cslPath)); err == nil {
+					srcPath = filepath.Join(ms.CSLDir, cslPath)
+				} else {
+					srcPath = filepath.Join(ms.Root, cslPath)
+				}
 			}
 			cslFilename := filepath.Base(cslPath)
 			destPath := filepath.Join(ms.LuminaBuildDir(), cslFilename)
@@ -121,7 +133,11 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 			if v != "" {
 				srcPath := v
 				if !filepath.IsAbs(v) {
-					srcPath = filepath.Join(ms.Root, v)
+					if _, err := os.Stat(filepath.Join(ms.TargetDir, v)); err == nil {
+						srcPath = filepath.Join(ms.TargetDir, v)
+					} else {
+						srcPath = filepath.Join(ms.Root, v)
+					}
 				}
 				bibFilename := filepath.Base(v)
 				destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
@@ -137,7 +153,11 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 				if str, ok := item.(string); ok && str != "" {
 					srcPath := str
 					if !filepath.IsAbs(str) {
-						srcPath = filepath.Join(ms.Root, str)
+						if _, err := os.Stat(filepath.Join(ms.TargetDir, str)); err == nil {
+							srcPath = filepath.Join(ms.TargetDir, str)
+						} else {
+							srcPath = filepath.Join(ms.Root, str)
+						}
 					}
 					bibFilename := filepath.Base(str)
 					destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
@@ -165,21 +185,21 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	}
 
 	// 7. Copy references.bib to .lumina/build/references.bib
-	bibSrc := filepath.Join(ms.Root, "references.bib")
 	bibDest := filepath.Join(ms.LuminaBuildDir(), "references.bib")
-	if err := copyFile(bibSrc, bibDest); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to copy references.bib: %w", err)
+	if _, err := os.Stat(bibDest); os.IsNotExist(err) {
+		if err := copyFile(ms.BibPath, bibDest); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to copy references.bib: %w", err)
+		}
 	}
 
-	// 8. Copy static figures to .lumina/figures/
-	srcFiguresDir := filepath.Join(ms.Root, "figures")
-	files, err := os.ReadDir(srcFiguresDir)
+	// 8. Copy static figures to .lumina/build/figures/
+	files, err := os.ReadDir(ms.FiguresDir)
 	if err == nil {
 		for _, f := range files {
 			if f.IsDir() || f.Name() == ".gitkeep" {
 				continue
 			}
-			src := filepath.Join(srcFiguresDir, f.Name())
+			src := filepath.Join(ms.FiguresDir, f.Name())
 			dest := filepath.Join(luminaFiguresDir, f.Name())
 			if err := copyFile(src, dest); err != nil {
 				return fmt.Errorf("failed to copy figure %s: %w", f.Name(), err)
@@ -187,7 +207,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		}
 	}
 
-	// 9. Sync LaTeX style files (publish/*.sty|*.cls|*.bst) to .lumina/build/
+	// 9. Sync LaTeX template and style files to .lumina/build/
 	if err := stageStyleFiles(ms); err != nil {
 		return err
 	}
@@ -196,7 +216,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 	return nil
 }
 
-// IsStale reports whether .lumina/manuscript.md needs to be regenerated.
+// IsStale reports whether .lumina/build/manuscript.md needs to be regenerated.
 func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	destStat, err := os.Stat(ms.IntermediateSource())
 	if err != nil {
@@ -218,7 +238,7 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	}
 
 	// Check metadata.yaml
-	metaStat, err := os.Stat(filepath.Join(ms.Root, "metadata.yaml"))
+	metaStat, err := os.Stat(filepath.Join(ms.TargetDir, "metadata.yaml"))
 	if err == nil {
 		if metaStat.ModTime().After(destTime) {
 			return true, nil
@@ -226,7 +246,7 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	}
 
 	// Check references.bib
-	bibStat, err := os.Stat(filepath.Join(ms.Root, "references.bib"))
+	bibStat, err := os.Stat(ms.BibPath)
 	if err == nil {
 		if bibStat.ModTime().After(destTime) {
 			return true, nil
@@ -234,8 +254,7 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	}
 
 	// Check figures directory files
-	srcFiguresDir := filepath.Join(ms.Root, "figures")
-	files, err := os.ReadDir(srcFiguresDir)
+	files, err := os.ReadDir(ms.FiguresDir)
 	if err == nil {
 		for _, f := range files {
 			if f.IsDir() || f.Name() == ".gitkeep" {
@@ -251,41 +270,41 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 		}
 	}
 
-	// Check LaTeX style files and template.tex: modified sources, plus
-	// staged/source set mismatch (an mtime check cannot detect a deleted
-	// source file).
-	styleNames, err := ListStyleFiles(ms.Root)
-	if err != nil {
-		return false, err
-	}
-	if _, err := os.Stat(filepath.Join(ms.Root, "publish", templateFileName)); err == nil {
-		styleNames = append(styleNames, templateFileName)
-	}
-	for _, name := range styleNames {
-		info, err := os.Stat(filepath.Join(ms.Root, "publish", name))
+	// Check LaTeX template and style files from templateDir
+	if ms.TemplateDir != "" {
+		styleNames, err := ListStyleFiles(ms.TemplateDir)
 		if err != nil {
 			return false, err
 		}
-		if info.ModTime().After(destTime) {
-			return true, nil
+		if _, err := os.Stat(filepath.Join(ms.TemplateDir, templateFileName)); err == nil {
+			styleNames = append(styleNames, templateFileName)
 		}
-		if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), name)); os.IsNotExist(err) {
-			return true, nil
+		for _, name := range styleNames {
+			info, err := os.Stat(filepath.Join(ms.TemplateDir, name))
+			if err != nil {
+				return false, err
+			}
+			if info.ModTime().After(destTime) {
+				return true, nil
+			}
+			if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), name)); os.IsNotExist(err) {
+				return true, nil
+			}
 		}
-	}
-	staged, err := os.ReadDir(ms.LuminaBuildDir())
-	if err != nil {
-		return false, err
-	}
-	for _, f := range staged {
-		if f.IsDir() {
-			continue
+		staged, err := os.ReadDir(ms.LuminaBuildDir())
+		if err != nil {
+			return false, err
 		}
-		if !slices.Contains(styleExtensions, filepath.Ext(f.Name())) && f.Name() != templateFileName {
-			continue
-		}
-		if !slices.Contains(styleNames, f.Name()) {
-			return true, nil
+		for _, f := range staged {
+			if f.IsDir() {
+				continue
+			}
+			if !slices.Contains(styleExtensions, filepath.Ext(f.Name())) && f.Name() != templateFileName {
+				continue
+			}
+			if !slices.Contains(styleNames, f.Name()) {
+				return true, nil
+			}
 		}
 	}
 

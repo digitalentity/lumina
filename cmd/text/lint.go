@@ -11,10 +11,11 @@ import (
 )
 
 var lintCmd = &cobra.Command{
-	Use:   "lint",
+	Use:   "lint <target>",
 	Short: "Lint manuscript prose using Vale",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		ms, err := manuscript.Load(args[0])
 		if err != nil {
 			return err
 		}
@@ -61,7 +62,7 @@ var lintCmd = &cobra.Command{
 		}
 
 		logx.Step("linting manuscript prose...")
-		if err := ms.Runner.Run("vale", []string{"manuscript.md"}, ms.Root); err != nil {
+		if err := ms.Runner.Run("vale", []string{ms.RelSource()}, ms.Root); err != nil {
 			return err
 		}
 

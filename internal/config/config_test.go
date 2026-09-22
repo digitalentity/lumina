@@ -110,6 +110,8 @@ func TestLoadMetadata(t *testing.T) {
 title: "A Great Paper"
 author: "Alice"
 wordlimit: 3000
+output: "custom-paper"
+template: "ieee"
 acronyms:
   API: "Application Programming Interface"
   CLI: "Command Line Interface"
@@ -127,8 +129,14 @@ acronyms:
 		if meta.WordLimit != 3000 {
 			t.Errorf("expected wordlimit 3000, got %d", meta.WordLimit)
 		}
+		if meta.Output != "custom-paper" {
+			t.Errorf("expected output 'custom-paper', got %q", meta.Output)
+		}
+		if meta.Template != "ieee" {
+			t.Errorf("expected template 'ieee', got %q", meta.Template)
+		}
 
-		// wordlimit is stripped (lumina-only); acronyms is reshaped into
+		// wordlimit, output, template are stripped (lumina-only); acronyms is reshaped into
 		// pandoc-acro's schema and forwarded, not stripped.
 		expectedRaw := map[string]any{
 			"title":  "A Great Paper",

@@ -1,16 +1,119 @@
-// Package build implements the lumina build subcommand group.
+// Package build implements the lumina build command.
 package build
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
+	"lumina/internal/citations"
+	"lumina/internal/logx"
+	"lumina/internal/manuscript"
+	"lumina/internal/preprocess"
 )
 
-// BuildCmd is the parent command for compilation tasks.
+var (
+	pdfFlag           bool
+	docxFlag          bool
+	texFlag           bool
+	zipFlag           bool
+	pubFlag           bool
+	preprocessFlag    bool
+	forceFlag         bool
+	pdfEngineOverride string
+)
+
+// BuildCmd is the command for compilation tasks.
 var BuildCmd = &cobra.Command{
-	Use:   "build",
-	Short: "Compile manuscript (preprocess, pdf, docx, tex, zip, pub)",
+	Use:   "build <target> [flags]",
+	Short: "Compile manuscript (all formats by default, or specific formats via flags)",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// If no subcommand is specified, delegate to the 'all' subcommand.
-		return allCmd.RunE(cmd, args)
+		target := args[0]
+		ms, err := manuscript.Load(target)
+		if err != nil {
+			return err
+		}
+
+		if pubFlag {
+			return BuildPub(ms, forceFlag)
+		}
+
+		if preprocessFlag {
+			return preprocess.Run(ms, preprocess.Options{Force: forceFlag})
+		}
+
+		// Determine formats
+		var formats []string
+		if pdfFlag {
+			formats = append(formats, "pdf")
+		}
+		if docxFlag {
+			formats = append(formats, "docx")
+		}
+		if texFlag {
+			formats = append(formats, "tex")
+		}
+		if zipFlag {
+			formats = append(formats, "zip")
+		}
+
+		if len(formats) == 0 {
+			formats = ms.Config.Formats
+		}
+
+		if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
+			return err
+		}
+
+		// Citation check if building multiple or default formats
+		if len(formats) > 1 {
+			logx.Section("Build %s", target)
+			logx.Step("checking citation integrity...")
+			res, err := citations.Check(ms)
+			if err != nil {
+				return err
+			}
+			if !res.Report() {
+				return fmt.Errorf("citation check failed: %d missing citation(s)", len(res.Missing))
+			}
+			logx.Success("citation check passed")
+		}
+
+		for _, format := range formats {
+			switch format {
+			case "pdf":
+				if err := BuildPDF(ms, pdfEngineOverride, forceFlag); err != nil {
+					return err
+				}
+			case "docx":
+				if err := BuildDOCX(ms, forceFlag); err != nil {
+					return err
+				}
+			case "tex":
+				if err := BuildTeX(ms, forceFlag); err != nil {
+					return err
+				}
+			case "zip":
+				if err := BuildZIP(ms, forceFlag); err != nil {
+					return err
+				}
+			default:
+				logx.Warn("unknown format %q, skipping", format)
+			}
+		}
+
+		return nil
 	},
+}
+
+func init() {
+	BuildCmd.Flags().BoolVar(&pdfFlag, "pdf", false, "Build PDF format")
+	BuildCmd.Flags().BoolVar(&docxFlag, "docx", false, "Build DOCX format")
+	BuildCmd.Flags().BoolVar(&texFlag, "tex", false, "Build standalone TeX source")
+	BuildCmd.Flags().BoolVar(&zipFlag, "zip", false, "Build ZIP submission archive")
+	BuildCmd.Flags().BoolVar(&pubFlag, "pub", false, "Run pre-submission validation gates")
+	BuildCmd.Flags().BoolVar(&preprocessFlag, "preprocess", false, "Run only preprocessing and staging")
+	BuildCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force rebuild and re-render diagrams")
+	BuildCmd.Flags().StringVar(&pdfEngineOverride, "pdf-engine", "", "Override PDF engine (e.g. xelatex, lualatex)")
 }

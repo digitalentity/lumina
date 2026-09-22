@@ -26,7 +26,7 @@ func TestTexIsStale(t *testing.T) {
 	ms := &manuscript.Manuscript{
 		Root:     tempDir,
 		Source:   sourcePath,
-		BuildDir: filepath.Join(tempDir, "_build"),
+		BuildDir: filepath.Join(tempDir, "build"),
 		Stem:     "manuscript",
 		Config:   config.Config{},
 		Runner:   &runner.HostRunner{},

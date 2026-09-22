@@ -10,10 +10,11 @@ import (
 )
 
 var wordsCmd = &cobra.Command{
-	Use:   "words",
+	Use:   "words <target>",
 	Short: "Count words in the manuscript",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		ms, err := manuscript.Load(args[0])
 		if err != nil {
 			return err
 		}
@@ -22,7 +23,7 @@ var wordsCmd = &cobra.Command{
 			return err
 		}
 
-		outBytes, err := ms.Runner.Capture("pandoc", []string{"manuscript.md", "--to=plain", "--quiet"}, ms.Root)
+		outBytes, err := ms.Runner.Capture("pandoc", []string{ms.RelSource(), "--to=plain", "--quiet"}, ms.Root)
 		if err != nil {
 			return err
 		}

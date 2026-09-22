@@ -4,6 +4,7 @@ package config
 import (
 	"io"
 	"os"
+	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,7 +19,9 @@ type Config struct {
 
 // LuminaMetadata contains custom metadata processed by lumina itself.
 type LuminaMetadata struct {
-	WordLimit int `yaml:"wordlimit"`
+	WordLimit int    `yaml:"wordlimit"`
+	Output    string `yaml:"output"`
+	Template  string `yaml:"template"`
 }
 
 // LoadConfig reads lumina.yaml from root. If file doesn't exist, returns default Config.
@@ -78,8 +81,13 @@ func LoadConfig(root string) (Config, error) {
 // filter at build time, not by lumina itself. Lumina only reshapes it from
 // the author-facing `KEY: "definition"` form into pandoc-acro's
 // `KEY: {short: KEY, long: "definition"}` schema before forwarding it.
-func LoadMetadata(root string) (LuminaMetadata, map[string]any, error) {
-	path := root + "/metadata.yaml"
+func LoadMetadata(dirOrPath string) (LuminaMetadata, map[string]any, error) {
+	path := dirOrPath
+	if fi, err := os.Stat(path); err == nil && fi.IsDir() {
+		path = filepath.Join(path, "metadata.yaml")
+	} else if filepath.Ext(path) == "" {
+		path = filepath.Join(path, "metadata.yaml")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -106,6 +114,22 @@ func LoadMetadata(root string) (LuminaMetadata, map[string]any, error) {
 			meta.WordLimit = limit
 		}
 		delete(raw, "wordlimit")
+	}
+
+	// Extract and parse output if present.
+	if val, ok := raw["output"]; ok {
+		if s, ok := val.(string); ok {
+			meta.Output = s
+		}
+		delete(raw, "output")
+	}
+
+	// Extract and parse template if present.
+	if val, ok := raw["template"]; ok {
+		if s, ok := val.(string); ok {
+			meta.Template = s
+		}
+		delete(raw, "template")
 	}
 
 	// Reshape acronyms for pandoc-acro, if present. Left as-is if it

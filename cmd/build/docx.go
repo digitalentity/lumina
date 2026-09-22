@@ -2,64 +2,45 @@ package build
 
 import (
 	"os"
-	"path/filepath"
 
-	"github.com/spf13/cobra"
 	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
 	"lumina/internal/preprocess"
 )
 
-var docxCmd = &cobra.Command{
-	Use:   "docx",
-	Short: "Build DOCX artifact from preprocessed manuscript",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
-		if err != nil {
-			return err
-		}
+// BuildDOCX compiles the DOCX artifact for the manuscript.
+func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
+	err := preprocess.Run(ms, preprocess.Options{Force: force})
+	if err != nil {
+		return err
+	}
 
-		err = preprocess.Run(ms, preprocess.Options{Force: forceFlag})
-		if err != nil {
-			return err
-		}
+	referenceDoc := preprocess.ReferenceDocPath(ms)
 
-		refPath := filepath.Join(ms.Root, "publish", "reference.docx")
-		var referenceDoc string
-		if _, err := os.Stat(refPath); err == nil {
-			referenceDoc = refPath
-		}
+	if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
+		return err
+	}
 
-		if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
-			return err
-		}
+	inv := &pandoc.Invocation{
+		Input:        ms.IntermediateSource(),
+		MetadataFile: ms.IntermediateMeta(),
+		Output:       ms.BuildPath("docx"),
+		Filters:      []string{"pandoc-acro", "pandoc-crossref"},
+		ExtraFlags:   []string{"--citeproc"},
+		ReferenceDoc: referenceDoc,
+	}
 
-		inv := &pandoc.Invocation{
-			Input:        ms.IntermediateSource(),
-			MetadataFile: ms.IntermediateMeta(),
-			Output:       ms.BuildPath("docx"),
-			Filters:      []string{"pandoc-acro", "pandoc-crossref"},
-			ExtraFlags:   []string{"--citeproc"},
-			ReferenceDoc: referenceDoc,
-		}
+	if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-acro", "pandoc-crossref"); err != nil {
+		return err
+	}
 
-		if err := pandoc.CheckPresent(ms.Runner, "pandoc", "pandoc-acro", "pandoc-crossref"); err != nil {
-			return err
-		}
+	logx.Step("compiling DOCX...")
+	err = inv.Run(ms)
+	if err != nil {
+		return err
+	}
 
-		logx.Step("compiling DOCX...")
-		err = inv.Run(ms)
-		if err != nil {
-			return err
-		}
-
-		logx.Success("DOCX created: %s", ms.BuildPath("docx"))
-		return nil
-	},
-}
-
-func init() {
-	docxCmd.Flags().BoolVarP(&forceFlag, "force", "f", false, "Force re-preprocessing")
-	BuildCmd.AddCommand(docxCmd)
+	logx.Success("DOCX created: %s", ms.BuildPath("docx"))
+	return nil
 }

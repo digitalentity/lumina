@@ -73,8 +73,9 @@ We cite @good1 and @missing1.
 	ms := &manuscript.Manuscript{
 		Root:      tempDir,
 		Source:    mPath,
+		BibPath:   bPath,
 		LuminaDir: filepath.Join(tempDir, ".lumina"),
-		BuildDir:  filepath.Join(tempDir, "_build"),
+		BuildDir:  filepath.Join(tempDir, "build"),
 		Stem:      "manuscript",
 		Config:    config.Config{},
 		Meta:      config.LuminaMetadata{},

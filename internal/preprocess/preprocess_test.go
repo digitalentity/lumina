@@ -15,18 +15,18 @@ type MockRunner struct {
 	Calls [][]string
 }
 
-func (m *MockRunner) Run(tool string, args []string, cwd string) error {
+func (m *MockRunner) Run(tool string, args []string, wd string) error {
 	m.Calls = append(m.Calls, append([]string{tool}, args...))
-	// Simulate writing the output file
+	// If it's mmdc, create the output file so subsequent stat checks find it
 	for i, arg := range args {
 		if arg == "-o" && i+1 < len(args) {
-			_ = os.WriteFile(args[i+1], []byte("mocked png"), 0644)
+			_ = os.WriteFile(args[i+1], []byte("fake png content"), 0644)
 		}
 	}
 	return nil
 }
 
-func (m *MockRunner) Capture(tool string, args []string, cwd string) ([]byte, error) {
+func (m *MockRunner) Capture(tool string, args []string, wd string) ([]byte, error) {
 	m.Calls = append(m.Calls, append([]string{tool}, args...))
 	return []byte("mocked output"), nil
 }
@@ -42,9 +42,12 @@ func TestRunAndIsStale(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	mPath := filepath.Join(tempDir, "manuscript.md")
-	metaPath := filepath.Join(tempDir, "metadata.yaml")
-	bibPath := filepath.Join(tempDir, "references.bib")
+	targetDir := filepath.Join(tempDir, "src", "paper")
+	_ = os.MkdirAll(targetDir, 0755)
+
+	mPath := filepath.Join(targetDir, "manuscript.md")
+	metaPath := filepath.Join(targetDir, "metadata.yaml")
+	bibPath := filepath.Join(targetDir, "references.bib")
 
 	mdContent := `
 # Title
@@ -62,23 +65,28 @@ acronyms:
 	_ = os.WriteFile(mPath, []byte(mdContent), 0644)
 	_ = os.WriteFile(metaPath, []byte(metaContent), 0644)
 	_ = os.WriteFile(bibPath, []byte(""), 0644)
-	_ = os.MkdirAll(filepath.Join(tempDir, "figures"), 0755)
+	_ = os.MkdirAll(filepath.Join(targetDir, "figures"), 0755)
 
-	meta, rawMeta, err := config.LoadMetadata(tempDir)
+	meta, rawMeta, err := config.LoadMetadata(targetDir)
 	if err != nil {
 		t.Fatalf("LoadMetadata failed: %v", err)
 	}
 
 	ms := &manuscript.Manuscript{
-		Root:      tempDir,
-		Source:    mPath,
-		LuminaDir: filepath.Join(tempDir, ".lumina"),
-		BuildDir:  filepath.Join(tempDir, "_build"),
-		Stem:      "manuscript",
-		Config:    config.Config{},
-		Meta:      meta,
-		RawMeta:   rawMeta,
-		Runner:    &MockRunner{},
+		Root:        tempDir,
+		ProjectRoot: tempDir,
+		Target:      "paper",
+		TargetDir:   targetDir,
+		Source:      mPath,
+		BibPath:     bibPath,
+		FiguresDir:  filepath.Join(targetDir, "figures"),
+		LuminaDir:   filepath.Join(tempDir, ".lumina"),
+		BuildDir:    filepath.Join(tempDir, "build"),
+		Stem:        "paper",
+		Config:      config.Config{},
+		Meta:        meta,
+		RawMeta:     rawMeta,
+		Runner:      &MockRunner{},
 	}
 
 	// 1. Initially it should be stale (dest file doesn't exist)
@@ -102,35 +110,36 @@ acronyms:
 		t.Fatalf("failed to read dest: %v", err)
 	}
 
-	// Acronym expansion is left to the pandoc-acro filter at build time,
-	// so the +KEY marker passes through untouched here.
+	// Should contain the replaced mermaid image link
+	if !bytes.Contains(destContent, []byte("![Mermaid Diagram](figures/mermaid-")) {
+		t.Errorf("expected mermaid image replacement, got:\n%s", string(destContent))
+	}
+	// Acronyms are NOT expanded at preprocess time — they are left for pandoc-acro
 	if !bytes.Contains(destContent, []byte("This is +API.")) {
-		t.Errorf("expected +API to pass through unexpanded: %s", string(destContent))
+		t.Errorf("expected original acronym key for pandoc-acro filter, got:\n%s", string(destContent))
 	}
 
-	// The acronyms map should be forwarded to .lumina/metadata.yaml in
-	// pandoc-acro's schema rather than stripped.
+	// Verify preprocessed metadata.yaml was written with reshaped acronyms
 	intermediateMeta, err := os.ReadFile(ms.IntermediateMeta())
 	if err != nil {
 		t.Fatalf("failed to read intermediate metadata: %v", err)
 	}
 	if !bytes.Contains(intermediateMeta, []byte("short: API")) || !bytes.Contains(intermediateMeta, []byte("long: Application Programming Interface")) {
-		t.Errorf("expected acronyms forwarded in pandoc-acro schema: %s", string(intermediateMeta))
+		t.Errorf("expected reshaped acronyms in intermediate metadata, got:\n%s", string(intermediateMeta))
 	}
 
-	// 3. It should not be stale now
+	// 3. Right after run, it should NOT be stale
 	stale, err = IsStale(ms)
 	if err != nil {
 		t.Fatalf("IsStale failed: %v", err)
 	}
 	if stale {
-		t.Error("expected not to be stale after Run")
+		t.Error("expected not to be stale right after Run")
 	}
 
-	// 4. Touch source file, it should become stale
-	// Sleep a bit to ensure modification time resolution
-	time.Sleep(10 * time.Millisecond)
-	err = os.WriteFile(mPath, []byte(mdContent+"\nSome change."), 0644)
+	// 4. Modify source manuscript -> should be stale
+	time.Sleep(10 * time.Millisecond) // Ensure mtime differs
+	err = os.WriteFile(mPath, []byte("# Updated Title"), 0644)
 	if err != nil {
 		t.Fatalf("failed to touch source: %v", err)
 	}
@@ -140,18 +149,19 @@ acronyms:
 		t.Fatalf("IsStale failed: %v", err)
 	}
 	if !stale {
-		t.Error("expected to be stale after source file modification")
+		t.Error("expected to be stale after source modification")
 	}
 
-	// 5. Re-run to clear staleness, then touch references.bib only.
-	if err := Run(ms, Options{}); err != nil {
+	// 5. Run again -> not stale
+	err = Run(ms, Options{})
+	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
 	time.Sleep(10 * time.Millisecond)
-	if err := os.WriteFile(bibPath, []byte("@article{k1, title={x}}"), 0644); err != nil {
+	err = os.WriteFile(bibPath, []byte("@article{foo, author={Bar}}"), 0644)
+	if err != nil {
 		t.Fatalf("failed to touch references.bib: %v", err)
 	}
-
 	stale, err = IsStale(ms)
 	if err != nil {
 		t.Fatalf("IsStale failed: %v", err)
@@ -168,50 +178,50 @@ func TestPreprocessAssemblesCSLAndBibliography(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Create root directory and parent directories for external CSL/Bib files
-	msRoot := filepath.Join(tempDir, "manuscript_root")
+	targetDir := filepath.Join(tempDir, "src", "paper")
 	cslDir := filepath.Join(tempDir, "csl")
-	bibDir := filepath.Join(tempDir, "bib")
 
-	if err := os.MkdirAll(msRoot, 0755); err != nil {
-		t.Fatalf("mkdir msRoot: %v", err)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("mkdir targetDir: %v", err)
 	}
 	if err := os.MkdirAll(cslDir, 0755); err != nil {
 		t.Fatalf("mkdir cslDir: %v", err)
 	}
-	if err := os.MkdirAll(bibDir, 0755); err != nil {
-		t.Fatalf("mkdir bibDir: %v", err)
-	}
 
-	// Write external files
 	cslFile := filepath.Join(cslDir, "harvard-cite.csl")
 	if err := os.WriteFile(cslFile, []byte("csl content"), 0644); err != nil {
 		t.Fatalf("write csl: %v", err)
 	}
-	bibFile := filepath.Join(bibDir, "references.bib")
+	bibFile := filepath.Join(targetDir, "references.bib")
 	if err := os.WriteFile(bibFile, []byte("bib content"), 0644); err != nil {
 		t.Fatalf("write bib: %v", err)
 	}
 
-	mPath := filepath.Join(msRoot, "manuscript.md")
+	mPath := filepath.Join(targetDir, "manuscript.md")
 	if err := os.WriteFile(mPath, []byte("# Title"), 0644); err != nil {
 		t.Fatalf("write manuscript: %v", err)
 	}
 
 	rawMeta := map[string]any{
-		"csl":          "../csl/harvard-cite.csl",
-		"bibliography": "../bib/references.bib",
+		"csl":          "harvard-cite.csl",
+		"bibliography": "references.bib",
 	}
 
 	ms := &manuscript.Manuscript{
-		Root:      msRoot,
-		Source:    mPath,
-		LuminaDir: filepath.Join(msRoot, ".lumina"),
-		BuildDir:  filepath.Join(msRoot, "_build"),
-		Stem:      "manuscript",
-		Config:    config.Config{},
-		RawMeta:   rawMeta,
-		Runner:    &MockRunner{},
+		Root:        tempDir,
+		ProjectRoot: tempDir,
+		Target:      "paper",
+		TargetDir:   targetDir,
+		Source:      mPath,
+		BibPath:     bibFile,
+		FiguresDir:  filepath.Join(targetDir, "figures"),
+		CSLDir:      cslDir,
+		LuminaDir:   filepath.Join(tempDir, ".lumina"),
+		BuildDir:    filepath.Join(tempDir, "build"),
+		Stem:        "paper",
+		Config:      config.Config{},
+		RawMeta:     rawMeta,
+		Runner:      &MockRunner{},
 	}
 
 	if err := Run(ms, Options{}); err != nil {

@@ -1,11 +1,13 @@
-// Package scaffold creates the initial manuscript directory structure.
+// Package scaffold creates the initial project and manuscript directory structure.
 package scaffold
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"lumina/internal/logx"
 )
@@ -13,47 +15,82 @@ import (
 //go:embed templates/*
 var templatesFS embed.FS
 
-// Init scaffolds a new manuscript directory in the target root.
-// It creates subdirectories and default config files only if they do not exist.
-func Init(root string) error {
-	// 1. Ensure directories exist
-	dirs := []string{"literature", "figures"}
-	for _, d := range dirs {
+// ErrEmptyTarget is returned when target is empty.
+var ErrEmptyTarget = errors.New("target name required")
+
+// Init scaffolds a new target manuscript inside src/<target> within projectRoot.
+// It also scaffolds project-level files and directories if they do not exist.
+func Init(projectRoot, target string) error {
+	if strings.TrimSpace(target) == "" {
+		return ErrEmptyTarget
+	}
+
+	root := filepath.Clean(projectRoot)
+
+	// 1. Scaffold project-level structure
+	projDirs := []string{"csl", filepath.Join("templates", "default")}
+	for _, d := range projDirs {
 		dirPath := filepath.Join(root, d)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", d, err)
 		}
-		// Write .gitkeep inside each directory
 		gitkeepPath := filepath.Join(dirPath, ".gitkeep")
 		if err := writeIfAbsent(gitkeepPath, []byte("")); err != nil {
 			return err
 		}
 	}
 
-	// 2. Write references.bib if absent
-	bibPath := filepath.Join(root, "references.bib")
+	projFiles := []struct {
+		destName     string
+		templateName string
+	}{
+		{"lumina.yaml", "templates/lumina.yaml.tmpl"},
+		{".gitignore", "templates/gitignore.tmpl"},
+		{".vale.ini", "templates/vale.ini.tmpl"},
+	}
+	for _, f := range projFiles {
+		content, err := templatesFS.ReadFile(f.templateName)
+		if err != nil {
+			return fmt.Errorf("failed to read embedded template %s: %w", f.templateName, err)
+		}
+		destPath := filepath.Join(root, f.destName)
+		if err := writeIfAbsent(destPath, content); err != nil {
+			return err
+		}
+	}
+
+	// 2. Scaffold target-level structure inside src/<target>
+	targetDir := filepath.Join(root, "src", target)
+	targetDirs := []string{"literature", "figures"}
+	for _, d := range targetDirs {
+		dirPath := filepath.Join(targetDir, d)
+		if err := os.MkdirAll(dirPath, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", d, err)
+		}
+		gitkeepPath := filepath.Join(dirPath, ".gitkeep")
+		if err := writeIfAbsent(gitkeepPath, []byte("")); err != nil {
+			return err
+		}
+	}
+
+	bibPath := filepath.Join(targetDir, "references.bib")
 	if err := writeIfAbsent(bibPath, []byte("")); err != nil {
 		return err
 	}
 
-	// 3. Write template files
-	files := []struct {
+	targetFiles := []struct {
 		destName     string
 		templateName string
 	}{
 		{"manuscript.md", "templates/manuscript.md.tmpl"},
 		{"metadata.yaml", "templates/metadata.yaml.tmpl"},
-		{".gitignore", "templates/gitignore.tmpl"},
-		{".vale.ini", "templates/vale.ini.tmpl"},
 	}
-
-	for _, f := range files {
+	for _, f := range targetFiles {
 		content, err := templatesFS.ReadFile(f.templateName)
 		if err != nil {
 			return fmt.Errorf("failed to read embedded template %s: %w", f.templateName, err)
 		}
-
-		destPath := filepath.Join(root, f.destName)
+		destPath := filepath.Join(targetDir, f.destName)
 		if err := writeIfAbsent(destPath, content); err != nil {
 			return err
 		}

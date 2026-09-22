@@ -3,7 +3,6 @@ package lit
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -19,14 +18,15 @@ var (
 )
 
 var pruneCmd = &cobra.Command{
-	Use:   "prune",
+	Use:   "prune <target>",
 	Short: "Prune unused bibliography entries from references.bib in-place",
 	Long: `Prune unused bibliography entries from references.bib in-place.
 
 Dry-run by default: reports which entries would be removed without
 touching references.bib. Pass --no-dry-run to actually rewrite the file.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ms, err := manuscript.Load()
+		ms, err := manuscript.Load(args[0])
 		if err != nil {
 			return err
 		}
@@ -45,7 +45,7 @@ touching references.bib. Pass --no-dry-run to actually rewrite the file.`,
 			}
 		}
 
-		bibPath := filepath.Join(ms.Root, "references.bib")
+		bibPath := ms.BibPath
 
 		entries, err := bibtex.Parse(bibPath)
 		if err != nil {

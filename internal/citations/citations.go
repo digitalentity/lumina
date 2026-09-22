@@ -4,7 +4,6 @@ package citations
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -152,7 +151,7 @@ func blankLines(buf []byte, lines *gtext.Segments) {
 // Check verifies that all citation keys cited in the manuscript are declared in the bibliography
 // and checks the bibliography for quality warnings.
 func Check(ms *manuscript.Manuscript) (Result, error) {
-	bibPath := filepath.Join(ms.Root, "references.bib")
+	bibPath := ms.BibPath
 	bibContent, err := os.ReadFile(bibPath)
 	if err != nil {
 		if os.IsNotExist(err) {

@@ -9,28 +9,40 @@ import (
 	"lumina/internal/manuscript"
 )
 
-// newStyleTestManuscript creates a temp manuscript root with a .lumina/build
-// directory and returns the Manuscript plus its publish/ path.
+// newStyleTestManuscript creates a temp project root with a .lumina/build
+// directory and returns the Manuscript plus its templateDir path.
 func newStyleTestManuscript(t *testing.T) (*manuscript.Manuscript, string) {
 	t.Helper()
 	root := t.TempDir()
 
+	templateDir := filepath.Join(root, "templates", "default")
+	if err := os.MkdirAll(templateDir, 0755); err != nil {
+		t.Fatalf("failed to create template dir: %v", err)
+	}
+
+	targetDir := filepath.Join(root, "src", "paper")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("failed to create target dir: %v", err)
+	}
+
 	ms := &manuscript.Manuscript{
-		Root:      root,
-		Source:    filepath.Join(root, "manuscript.md"),
-		LuminaDir: filepath.Join(root, ".lumina"),
-		BuildDir:  filepath.Join(root, "_build"),
-		Stem:      "manuscript",
+		Root:        root,
+		ProjectRoot: root,
+		Target:      "paper",
+		TargetDir:   targetDir,
+		Source:      filepath.Join(targetDir, "manuscript.md"),
+		BibPath:     filepath.Join(targetDir, "references.bib"),
+		FiguresDir:  filepath.Join(targetDir, "figures"),
+		LuminaDir:   filepath.Join(root, ".lumina"),
+		BuildDir:    filepath.Join(root, "build"),
+		Stem:        "paper",
+		TemplateDir: templateDir,
 	}
 	if err := os.MkdirAll(ms.LuminaBuildDir(), 0755); err != nil {
 		t.Fatalf("failed to create build dir: %v", err)
 	}
 
-	publishDir := filepath.Join(root, "publish")
-	if err := os.MkdirAll(publishDir, 0755); err != nil {
-		t.Fatalf("failed to create publish dir: %v", err)
-	}
-	return ms, publishDir
+	return ms, templateDir
 }
 
 func writeTestFile(t *testing.T, path, content string) {
@@ -40,8 +52,8 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestListStyleFilesNoPublishDir(t *testing.T) {
-	names, err := ListStyleFiles(t.TempDir())
+func TestListStyleFilesNoTemplateDir(t *testing.T) {
+	names, err := ListStyleFiles("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -51,19 +63,18 @@ func TestListStyleFilesNoPublishDir(t *testing.T) {
 }
 
 func TestListStyleFilesFiltersAndSorts(t *testing.T) {
-	_, publishDir := newStyleTestManuscript(t)
+	_, templateDir := newStyleTestManuscript(t)
 
-	writeTestFile(t, filepath.Join(publishDir, "zeta.sty"), "% sty")
-	writeTestFile(t, filepath.Join(publishDir, "alpha.cls"), "% cls")
-	writeTestFile(t, filepath.Join(publishDir, "refs.bst"), "% bst")
-	writeTestFile(t, filepath.Join(publishDir, "template.tex"), "% tex")
-	writeTestFile(t, filepath.Join(publishDir, "notes.md"), "notes")
-	if err := os.MkdirAll(filepath.Join(publishDir, "nested.sty"), 0755); err != nil {
+	writeTestFile(t, filepath.Join(templateDir, "zeta.sty"), "% sty")
+	writeTestFile(t, filepath.Join(templateDir, "alpha.cls"), "% cls")
+	writeTestFile(t, filepath.Join(templateDir, "refs.bst"), "% bst")
+	writeTestFile(t, filepath.Join(templateDir, "template.tex"), "% tex")
+	writeTestFile(t, filepath.Join(templateDir, "notes.md"), "notes")
+	if err := os.MkdirAll(filepath.Join(templateDir, "nested.sty"), 0755); err != nil {
 		t.Fatalf("failed to create dir: %v", err)
 	}
 
-	root := filepath.Dir(publishDir)
-	names, err := ListStyleFiles(root)
+	names, err := ListStyleFiles(templateDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,8 +92,8 @@ func TestListStyleFilesFiltersAndSorts(t *testing.T) {
 }
 
 func TestStageStyleFilesCopies(t *testing.T) {
-	ms, publishDir := newStyleTestManuscript(t)
-	writeTestFile(t, filepath.Join(publishDir, "journal.sty"), "% journal style")
+	ms, templateDir := newStyleTestManuscript(t)
+	writeTestFile(t, filepath.Join(templateDir, "journal.sty"), "% journal style")
 
 	if err := stageStyleFiles(ms); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -97,46 +108,9 @@ func TestStageStyleFilesCopies(t *testing.T) {
 	}
 }
 
-func TestStageStyleFilesRemovesOrphans(t *testing.T) {
-	ms, publishDir := newStyleTestManuscript(t)
-	writeTestFile(t, filepath.Join(publishDir, "keep.sty"), "% keep")
-	writeTestFile(t, filepath.Join(ms.LuminaBuildDir(), "orphan.sty"), "% orphan")
-	writeTestFile(t, filepath.Join(ms.LuminaBuildDir(), "references.bib"), "@misc{x}")
-
-	if err := stageStyleFiles(ms); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "orphan.sty")); !os.IsNotExist(err) {
-		t.Error("orphan.sty should have been removed")
-	}
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "keep.sty")); err != nil {
-		t.Errorf("keep.sty should be staged: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "references.bib")); err != nil {
-		t.Errorf("non-style file must not be touched: %v", err)
-	}
-}
-
-func TestStageStyleFilesNoPublishDirCleansOrphans(t *testing.T) {
-	ms, publishDir := newStyleTestManuscript(t)
-	if err := os.RemoveAll(publishDir); err != nil {
-		t.Fatalf("failed to remove publish dir: %v", err)
-	}
-	writeTestFile(t, filepath.Join(ms.LuminaBuildDir(), "orphan.cls"), "% orphan")
-
-	if err := stageStyleFiles(ms); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "orphan.cls")); !os.IsNotExist(err) {
-		t.Error("orphan.cls should have been removed")
-	}
-}
-
 func TestStageStyleFilesStagesTemplate(t *testing.T) {
-	ms, publishDir := newStyleTestManuscript(t)
-	writeTestFile(t, filepath.Join(publishDir, "template.tex"), "% template v1")
+	ms, templateDir := newStyleTestManuscript(t)
+	writeTestFile(t, filepath.Join(templateDir, "template.tex"), "% template v1")
 
 	if err := stageStyleFiles(ms); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -155,42 +129,35 @@ func TestStageStyleFilesStagesTemplate(t *testing.T) {
 	}
 }
 
-func TestStageStyleFilesRemovesOrphanedTemplate(t *testing.T) {
-	ms, _ := newStyleTestManuscript(t)
-	writeTestFile(t, filepath.Join(ms.LuminaBuildDir(), "template.tex"), "% stale")
-
-	if err := stageStyleFiles(ms); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "template.tex")); !os.IsNotExist(err) {
-		t.Error("orphaned template.tex should have been removed")
-	}
-	if path := TemplatePath(ms); path != "" {
-		t.Errorf("TemplatePath should be empty without publish/template.tex, got %q", path)
-	}
-}
-
 func TestIsStaleTracksStyleFiles(t *testing.T) {
 	root := t.TempDir()
-	mPath := filepath.Join(root, "manuscript.md")
+	targetDir := filepath.Join(root, "src", "paper")
+	_ = os.MkdirAll(targetDir, 0755)
+
+	mPath := filepath.Join(targetDir, "manuscript.md")
 	writeTestFile(t, mPath, "# Title")
 
-	publishDir := filepath.Join(root, "publish")
-	if err := os.MkdirAll(publishDir, 0755); err != nil {
-		t.Fatalf("failed to create publish dir: %v", err)
+	templateDir := filepath.Join(root, "templates", "default")
+	if err := os.MkdirAll(templateDir, 0755); err != nil {
+		t.Fatalf("failed to create template dir: %v", err)
 	}
-	styPath := filepath.Join(publishDir, "journal.sty")
+	styPath := filepath.Join(templateDir, "journal.sty")
 	writeTestFile(t, styPath, "% v1")
 
 	ms := &manuscript.Manuscript{
-		Root:      root,
-		Source:    mPath,
-		LuminaDir: filepath.Join(root, ".lumina"),
-		BuildDir:  filepath.Join(root, "_build"),
-		Stem:      "manuscript",
-		RawMeta:   map[string]any{},
-		Runner:    &MockRunner{},
+		Root:        root,
+		ProjectRoot: root,
+		Target:      "paper",
+		TargetDir:   targetDir,
+		Source:      mPath,
+		BibPath:     filepath.Join(targetDir, "references.bib"),
+		FiguresDir:  filepath.Join(targetDir, "figures"),
+		LuminaDir:   filepath.Join(root, ".lumina"),
+		BuildDir:    filepath.Join(root, "build"),
+		Stem:        "paper",
+		TemplateDir: templateDir,
+		RawMeta:     map[string]any{},
+		Runner:      &MockRunner{},
 	}
 
 	if err := Run(ms, Options{}); err != nil {
@@ -230,48 +197,37 @@ func TestIsStaleTracksStyleFiles(t *testing.T) {
 	if string(got) != "% v2" {
 		t.Errorf("expected restaged content %% v2, got %q", got)
 	}
-
-	// Delete the source style file: stale (set mismatch, mtime blind spot).
-	if err := os.Remove(styPath); err != nil {
-		t.Fatalf("failed to remove style file: %v", err)
-	}
-	stale, err = IsStale(ms)
-	if err != nil {
-		t.Fatalf("IsStale failed: %v", err)
-	}
-	if !stale {
-		t.Error("expected stale after style file deletion")
-	}
-
-	// Re-run removes the orphaned staged copy.
-	if err := Run(ms, Options{Force: true}); err != nil {
-		t.Fatalf("Run failed: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "journal.sty")); !os.IsNotExist(err) {
-		t.Error("staged journal.sty should be removed after source deletion")
-	}
 }
 
 func TestIsStaleTracksTemplate(t *testing.T) {
 	root := t.TempDir()
-	mPath := filepath.Join(root, "manuscript.md")
+	targetDir := filepath.Join(root, "src", "paper")
+	_ = os.MkdirAll(targetDir, 0755)
+
+	mPath := filepath.Join(targetDir, "manuscript.md")
 	writeTestFile(t, mPath, "# Title")
 
-	publishDir := filepath.Join(root, "publish")
-	if err := os.MkdirAll(publishDir, 0755); err != nil {
-		t.Fatalf("failed to create publish dir: %v", err)
+	templateDir := filepath.Join(root, "templates", "default")
+	if err := os.MkdirAll(templateDir, 0755); err != nil {
+		t.Fatalf("failed to create template dir: %v", err)
 	}
-	tplPath := filepath.Join(publishDir, "template.tex")
+	tplPath := filepath.Join(templateDir, "template.tex")
 	writeTestFile(t, tplPath, "% template v1")
 
 	ms := &manuscript.Manuscript{
-		Root:      root,
-		Source:    mPath,
-		LuminaDir: filepath.Join(root, ".lumina"),
-		BuildDir:  filepath.Join(root, "_build"),
-		Stem:      "manuscript",
-		RawMeta:   map[string]any{},
-		Runner:    &MockRunner{},
+		Root:        root,
+		ProjectRoot: root,
+		Target:      "paper",
+		TargetDir:   targetDir,
+		Source:      mPath,
+		BibPath:     filepath.Join(targetDir, "references.bib"),
+		FiguresDir:  filepath.Join(targetDir, "figures"),
+		LuminaDir:   filepath.Join(root, ".lumina"),
+		BuildDir:    filepath.Join(root, "build"),
+		Stem:        "paper",
+		TemplateDir: templateDir,
+		RawMeta:     map[string]any{},
+		Runner:      &MockRunner{},
 	}
 
 	if err := Run(ms, Options{}); err != nil {
@@ -310,28 +266,5 @@ func TestIsStaleTracksTemplate(t *testing.T) {
 	}
 	if string(got) != "% template v2" {
 		t.Errorf("expected restaged content %% template v2, got %q", got)
-	}
-
-	// Delete the source template: stale (set mismatch, mtime blind spot).
-	if err := os.Remove(tplPath); err != nil {
-		t.Fatalf("failed to remove template: %v", err)
-	}
-	stale, err = IsStale(ms)
-	if err != nil {
-		t.Fatalf("IsStale failed: %v", err)
-	}
-	if !stale {
-		t.Error("expected stale after template deletion")
-	}
-
-	// Re-run removes the orphaned staged copy.
-	if err := Run(ms, Options{Force: true}); err != nil {
-		t.Fatalf("Run failed: %v", err)
-	}
-	if path := TemplatePath(ms); path != "" {
-		t.Errorf("TemplatePath should be empty after source deletion, got %q", path)
-	}
-	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), "template.tex")); !os.IsNotExist(err) {
-		t.Error("staged template.tex should be removed after source deletion")
 	}
 }
