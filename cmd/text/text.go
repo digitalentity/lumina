@@ -8,5 +8,5 @@ import (
 // TextCmd is the parent command for text prose quality subcommands.
 var TextCmd = &cobra.Command{
 	Use:   "text",
-	Short: "Manage manuscript text quality (word count, format, lint)",
+	Short: "Manage manuscript text quality (word count, format, lint, AI detection)",
 }

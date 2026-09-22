@@ -11,11 +11,29 @@ import (
 
 // Config represents tool-specific configurations from lumina.yaml.
 type Config struct {
-	PDFEngine  string   `yaml:"pdf-engine"`
-	Formats    []string `yaml:"formats"`
-	Runner     string   `yaml:"runner"`
-	ToolsImage string   `yaml:"tools-image"`
+	PDFEngine  string     `yaml:"pdf-engine"`
+	Formats    []string   `yaml:"formats"`
+	Runner     string     `yaml:"runner"`
+	ToolsImage string     `yaml:"tools-image"`
+	Text       TextConfig `yaml:"text"`
 }
+
+// TextConfig holds config scoped to `lumina text` subcommands. It is the
+// first nested config block in lumina.yaml, and the template other
+// command-scoped config (future text.lint.*, etc.) can follow.
+type TextConfig struct {
+	Detect DetectConfig `yaml:"detect"`
+}
+
+// DetectConfig holds config for `lumina text detect`.
+type DetectConfig struct {
+	Threshold     int      `yaml:"threshold"`
+	IgnorePhrases []string `yaml:"ignore_phrases"`
+}
+
+// defaultDetectThreshold matches aidetect.DefaultThreshold; kept as a local
+// constant so internal/config, a leaf package, need not import aidetect.
+const defaultDetectThreshold = 60
 
 // LuminaMetadata contains custom metadata processed by lumina itself.
 type LuminaMetadata struct {
@@ -35,6 +53,12 @@ func LoadConfig(root string) (Config, error) {
 		Formats:    []string{"pdf", "docx", "tex", "zip"},
 		Runner:     "host",
 		ToolsImage: "lumina-tools:latest",
+		Text: TextConfig{
+			Detect: DetectConfig{
+				Threshold:     defaultDetectThreshold,
+				IgnorePhrases: []string{},
+			},
+		},
 	}
 
 	path := root + "/lumina.yaml"
@@ -68,6 +92,12 @@ func LoadConfig(root string) (Config, error) {
 	}
 	if cfg.ToolsImage == "" {
 		cfg.ToolsImage = defaultCfg.ToolsImage
+	}
+	if cfg.Text.Detect.Threshold == 0 {
+		cfg.Text.Detect.Threshold = defaultCfg.Text.Detect.Threshold
+	}
+	if cfg.Text.Detect.IgnorePhrases == nil {
+		cfg.Text.Detect.IgnorePhrases = defaultCfg.Text.Detect.IgnorePhrases
 	}
 
 	return cfg, nil

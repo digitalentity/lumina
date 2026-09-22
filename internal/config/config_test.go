@@ -24,6 +24,12 @@ func TestLoadConfig(t *testing.T) {
 			Formats:    []string{"pdf", "docx", "tex", "zip"},
 			Runner:     "host",
 			ToolsImage: "lumina-tools:latest",
+			Text: TextConfig{
+				Detect: DetectConfig{
+					Threshold:     60,
+					IgnorePhrases: []string{},
+				},
+			},
 		}
 		if !reflect.DeepEqual(cfg, expected) {
 			t.Errorf("got %+v, expected %+v", cfg, expected)
@@ -53,9 +59,66 @@ tools-image: custom-image:v1
 			Formats:    []string{"pdf", "tex"},
 			Runner:     "docker",
 			ToolsImage: "custom-image:v1",
+			Text: TextConfig{
+				Detect: DetectConfig{
+					Threshold:     60,
+					IgnorePhrases: []string{},
+				},
+			},
 		}
 		if !reflect.DeepEqual(cfg, expected) {
 			t.Errorf("got %+v, expected %+v", cfg, expected)
+		}
+	})
+
+	t.Run("nested text.detect config", func(t *testing.T) {
+		content := `
+text:
+  detect:
+    threshold: 75
+    ignore_phrases:
+      - "in conclusion"
+      - "furthermore"
+`
+		if err := os.WriteFile(filepath.Join(tempDir, "lumina.yaml"), []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+
+		if cfg.Text.Detect.Threshold != 75 {
+			t.Errorf("expected threshold 75, got %d", cfg.Text.Detect.Threshold)
+		}
+		expectedIgnore := []string{"in conclusion", "furthermore"}
+		if !reflect.DeepEqual(cfg.Text.Detect.IgnorePhrases, expectedIgnore) {
+			t.Errorf("got ignore_phrases %+v, expected %+v", cfg.Text.Detect.IgnorePhrases, expectedIgnore)
+		}
+		// Fields left unset in lumina.yaml still default.
+		if cfg.PDFEngine != "xelatex" {
+			t.Errorf("expected default pdf-engine, got %q", cfg.PDFEngine)
+		}
+	})
+
+	t.Run("text.detect defaults when omitted", func(t *testing.T) {
+		content := `
+pdf-engine: lualatex
+`
+		if err := os.WriteFile(filepath.Join(tempDir, "lumina.yaml"), []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		cfg, err := LoadConfig(tempDir)
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if cfg.Text.Detect.Threshold != 60 {
+			t.Errorf("expected default threshold 60, got %d", cfg.Text.Detect.Threshold)
+		}
+		if len(cfg.Text.Detect.IgnorePhrases) != 0 {
+			t.Errorf("expected empty ignore_phrases, got %+v", cfg.Text.Detect.IgnorePhrases)
 		}
 	})
 

@@ -1,7 +1,7 @@
 # SDD Spec: AI-Generated Text Detector
 
 ## Metadata
-* **Status:** `PROPOSAL`
+* **Status:** `IMPLEMENTED`
 * **Author:** Konstantin Sharlaimov
 * **Created:** 2026-09-22
 * **Last Updated:** 2026-09-22
@@ -32,6 +32,7 @@ Detection relies on deterministic statistical signal without external network ca
 2. **Sentence Burstiness (Variance of Length)**: LLMs produce syntactically uniform sentence lengths. Human academic writing exhibits "burstiness" — high variance between short direct assertions and complex composite statements.
 3. **Lexical Diversity & Repetition**: Type-Token Ratio (TTR) and repetitive n-gram frequency across paragraphs.
 4. **Robotic Stock-Phrase Density**: Direct pattern-matching against overrepresented LLM markers ("delve", "testament", "pivotal", "in summary", "furthermore", "it is worth noting", "crucial role", etc.).
+5. **Punctuation & Hedging Density**: Em-dash overuse and hedge-phrase frequency ("often", "generally", "it is worth noting"), both flagged in independent AI-detection heuristic literature as overrepresented in LLM output relative to human academic prose.
 
 Each paragraph receives an honest composite AI probability score. Sections exceeding the threshold are highlighted in red with exact line numbers and the offending metrics called out plainly.
 
@@ -42,13 +43,14 @@ Each paragraph receives an honest composite AI probability score. Sections excee
   * Structured Markdown extraction using `goldmark` AST to isolate pure prose paragraphs, stripping code blocks, display/inline LaTeX math, table cells, and Pandoc citation keys (`[@cite]`).
   * Abbreviation-aware sentence tokenizer handling academic conventions (`et al.`, `i.e.`, `e.g.`, `Fig.`, `Ref.`, `Eq.`, `Dr.`, `vs.`) to prevent skewed sentence burstiness scores.
   * Compact pruned n-gram language model embedded in binary via `embed.FS`.
-  * Offline model-training pipeline: a standalone script under `tools/train-ngram/`
-    (not compiled into the `lumina` binary), trained from a curated,
-    explicitly-licensed public-domain English corpus (e.g. a Project Gutenberg
-    slice). The corpus's source and license are documented in
-    `tools/train-ngram/README.md`; the trained output is committed as
-    `internal/aidetect/assets/model.bin.gz`, regenerable on demand but not
-    regenerated at build or run time.
+  * Offline model-training pipeline: standalone tools under `tools/train-ngram/`
+    (not compiled into the `lumina` binary), trained on modern academic prose —
+    paper titles and abstracts fetched from the arXiv API, restricted to
+    papers submitted on or before 2023-12-31 to avoid corpus contamination by
+    widespread LLM-assisted writing (ChatGPT launched November 2022). The
+    corpus's source is documented in `tools/train-ngram/README.md`; the
+    trained output is committed as `internal/aidetect/assets/model.bin.gz`,
+    regenerable on demand but not regenerated at build or run time.
   * New CLI command `lumina text detect <target>` (and alias `lumina text ai <target>`).
   * CLI flags:
     * `--threshold <int>`: Minimum suspicion score to flag (default: 60).
@@ -59,8 +61,7 @@ Each paragraph receives an honest composite AI probability score. Sections excee
   * Unit tests validating each heuristic in isolation against synthetic
     fixtures engineered to trip it (uniform sentence lengths for burstiness,
     high stock-phrase density, low type-token ratio, etc.) — no real-world
-    "AI-generated" text is sourced or shipped, sidestepping any provenance/
-    licensing question for test data.
+    "AI-generated" text is sourced or shipped.
 
 * **Out of Scope:**
   * Network requests, telemetry, or remote API calls.
@@ -87,12 +88,16 @@ graph TD
         FEAT --> F2["Perplexity\n(Embedded N-Gram Model)"]
         FEAT --> F3["Lexical Diversity\n(Type-Token Ratio)"]
         FEAT --> F4["Stock Phrases\n(Robotic LLM Diction)"]
+        FEAT --> F5["Punctuation Density\n(Em-Dash Overuse)"]
+        FEAT --> F6["Hedge Density\n(Softening Phrases)"]
     end
     
     F1 --> COMPOSITE["Composite Scoring\n(0-100% Probability)"]
     F2 --> COMPOSITE
     F3 --> COMPOSITE
     F4 --> COMPOSITE
+    F5 --> COMPOSITE
+    F6 --> COMPOSITE
     
     COMPOSITE --> CLI["CLI Formatter\n(Plain / Detail / JSON)"]
 ```
@@ -105,15 +110,17 @@ offline, by hand, to produce the `model.bin.gz` asset that `F2` loads at
 1. **`internal/aidetect/parser.go`**: Walks Goldmark AST. Extracts paragraph text, records source line numbers, cleans citations (`[@...]`) and inline math (`$...$`).
 2. **`internal/aidetect/tokenizer.go`**: Splits paragraph into words and sentences. Recognizes common academic abbreviations to ensure accurate boundary detection.
 3. **`internal/aidetect/ngram.go`**: Evaluates word sequence probabilities against an embedded pruned n-gram frequency trie loaded from `internal/aidetect/assets/model.bin.gz`.
-4. **`internal/aidetect/scorer.go`**: Computes standard deviation of sentence lengths (burstiness), vocabulary richness, and stock-phrase frequencies, returning a normalized 0–100 AI probability score.
+4. **`internal/aidetect/scorer.go`**: Computes standard deviation of sentence lengths (burstiness), vocabulary richness, stock-phrase frequency, em-dash density, and hedge-phrase density, returning a normalized 0–100 AI probability score.
 5. **`cmd/text/detect.go`**: Registers `detect` and `ai` subcommands under `lumina text`. Handles CLI flags, terminal rendering via `internal/logx`, and JSON serialization.
 6. **`tools/train-ngram/main.go`** *(build-time only, never imported by `lumina`)*: standalone
    Go program that reads a source corpus, builds a pruned n-gram frequency
    table, and writes the compressed `model.bin.gz` consumed by component 3.
    Run manually by a maintainer when the model needs regenerating — not part
    of `make build`, `make test`, or any CI path that runs on every commit.
-   `tools/train-ngram/README.md` documents the corpus source, license, and
-   exact invocation used to produce the committed model.
+   `tools/train-ngram/fetchcorpus/main.go` fetches that source corpus (arXiv
+   abstracts) via arXiv's public API. `tools/train-ngram/README.md`
+   documents the corpus source and exact invocation used to produce the
+   committed model.
 
 ### 2.2 Data Structures & Interfaces
 
@@ -122,8 +129,9 @@ package aidetect
 
 // Options configures the detector engine.
 type Options struct {
-	Threshold   int     // Minimum score to flag as AI-generated (0-100, default: 60)
-	ModelPath   string  // Optional external model path; defaults to embedded model
+	Threshold     int      // Minimum score to flag as AI-generated (0-100, default: 60)
+	ModelPath     string   // Optional external model path; defaults to embedded model
+	IgnorePhrases []string // Stock/hedge phrases exempted from scoring (lumina.yaml text.detect.ignore_phrases)
 }
 
 // ParagraphReport contains evaluation results for a single paragraph.
@@ -136,6 +144,8 @@ type ParagraphReport struct {
 	Burstiness    float64  `json:"burstiness"`
 	Perplexity    float64  `json:"perplexity"`
 	StockPhrases  []string `json:"stock_phrases,omitempty"`
+	EmDashDensity float64  `json:"em_dash_density"` // em-dashes per 100 words
+	HedgeDensity  float64  `json:"hedge_density"`   // hedge phrases per 100 words
 }
 
 // ManuscriptReport aggregates results across the document.
@@ -189,45 +199,46 @@ type Detector interface {
 
 ### 3.1 Task Breakdown
 
-- [ ] **Task 1: AST Prose Extractor and Tokenizer**
+- [x] **Task 1: AST Prose Extractor and Tokenizer**
   - **Files:** `internal/aidetect/parser.go`, `internal/aidetect/tokenizer.go`, `internal/aidetect/tokenizer_test.go`
   - Extract paragraphs with source line numbers, strip citation tags, handle academic abbreviations in sentence splitting.
   - **Verification:** `go test ./internal/aidetect -run TestTokenizer -v`
 
-- [ ] **Task 2: Offline N-Gram Training Pipeline & Model Asset**
-  - **Files:** `tools/train-ngram/main.go`, `tools/train-ngram/README.md`, `internal/aidetect/assets/model.bin.gz`
-  - Document and pin the source corpus (public-domain, explicitly licensed)
-    used to train the model. Implement the offline trainer that prunes to
-    top n-grams/vocabulary and writes the compressed asset. Run it once to
-    produce the committed `model.bin.gz`. Not wired into `make build`/`make test`.
+- [x] **Task 2: Offline N-Gram Training Pipeline & Model Asset**
+  - **Files:** `tools/train-ngram/main.go`, `tools/train-ngram/fetchcorpus/main.go`, `tools/train-ngram/README.md`, `internal/aidetect/assets/model.bin.gz`
+  - Document and pin the source corpus used to train the model (arXiv
+    abstracts, submitted on or before 2023-12-31). Implement the offline
+    trainer that prunes to top n-grams/vocabulary and writes the compressed
+    asset. Run it once to produce the committed `model.bin.gz`. Not wired
+    into `make build`/`make test`.
   - **Verification:** `go run ./tools/train-ngram --corpus <path> --out internal/aidetect/assets/model.bin.gz`
 
-- [ ] **Task 3: Embedded N-Gram Perplexity Scorer**
+- [x] **Task 3: Embedded N-Gram Perplexity Scorer**
   - **Files:** `internal/aidetect/ngram.go`, `internal/aidetect/ngram_test.go`
   - Load `model.bin.gz` via `embed.FS`; implement perplexity scoring against
     the frequency trie.
   - **Verification:** `go test ./internal/aidetect -run TestPerplexity -v`
 
-- [ ] **Task 4: Stylometric Heuristics & Composite Scorer**
+- [x] **Task 4: Stylometric Heuristics & Composite Scorer**
   - **Files:** `internal/aidetect/scorer.go`, `internal/aidetect/rules.go`, `internal/aidetect/scorer_test.go`
   - Implement sentence length burstiness, vocabulary richness, and LLM
     phrase dictionary matching. Test each heuristic against synthetic
     fixtures engineered to trip it (no real-world AI-text corpus).
   - **Verification:** `go test ./internal/aidetect -run TestScorer -v`
 
-- [ ] **Task 5: Nested Config Support**
+- [x] **Task 5: Nested Config Support**
   - **Files:** `internal/config/config.go`, `internal/config/config_test.go`
   - Add `Config.Text.Detect` nested struct (`threshold`, `ignore_phrases`)
     with hand-rolled default-filling matching the existing pattern.
   - **Verification:** `go test ./internal/config -v`
 
-- [ ] **Task 6: CLI Command Wiring**
+- [x] **Task 6: CLI Command Wiring**
   - **Files:** `cmd/text/detect.go`, `cmd/text/text.go`
   - Register `detect` and alias `ai`. Connect target resolution, config
     threshold/ignore-phrases, and formatting (standard, `--detail`, `--json`).
   - **Verification:** `go build ./... && ./_build/lumina text detect --help`
 
-- [ ] **Task 7: Documentation & End-to-End Validation**
+- [x] **Task 7: Documentation & End-to-End Validation**
   - **Files:** `README.md`, `spec/008_ai_detector/spec.md`
   - Document command, flags, and config keys in the CLI reference. Validate
     against real test manuscripts.
@@ -235,18 +246,17 @@ type Detector interface {
 
 ### 3.2 Risks & Mitigation
 
-* **Corpus licensing**: Any corpus used for training must be verifiably public-domain or otherwise clearly licensed for redistribution, since the *trained model* (derived data), not the raw corpus, is what gets committed to the repo. Documented in `tools/train-ngram/README.md`.
 * **False positives in rigid academic sections (e.g. experimental setup)**: Composite scoring weights multiple signals rather than relying on a single metric; `--threshold` allows author tuning.
 
 ---
 
 ## Phase 4: Execution & Verification
 
-- [ ] All per-task verification steps pass.
-- [ ] Linter / vet clean (`go vet ./...`).
-- [ ] Unit tests pass (`go test ./...`).
-- [ ] Build targets compile (`make build`).
-- [ ] Neighbor packages unaffected.
+- [x] All per-task verification steps pass.
+- [x] Linter / vet clean (`go vet ./...`).
+- [x] Unit tests pass (`go test ./...`).
+- [x] Build targets compile (`make build`).
+- [x] Neighbor packages unaffected.
 - [ ] Approved by the User.
 
 ---

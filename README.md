@@ -86,6 +86,14 @@ Flags:
 | `lumina text words <target>` | Word count via `pandoc --to=plain`. Reports `count / limit` if `wordlimit` is set in `metadata.yaml`. |
 | `lumina text fmt <target>` | Format `src/<target>/manuscript.md` with prettier. |
 | `lumina text lint <target>` | Runs Vale against `src/<target>/manuscript.md` using `.vale.ini` from project root. |
+| `lumina text detect <target>` (alias `ai`) | Scores manuscript paragraphs for statistical signals of AI-generated prose: n-gram perplexity, sentence-length burstiness, lexical diversity, stock-phrase/hedge-word density, and em-dash overuse. Fully offline — no network calls, no neural runtime. |
+
+Flags for `detect`/`ai`:
+* `--threshold N` / `-t N`: Minimum suspicion score (0-100) to flag a paragraph (default: `60`).
+* `--detail` / `-d`: Print each flagged paragraph's sub-score breakdown (burstiness, perplexity, densities, matched stock phrases).
+* `--json` / `-j`: Emit the full report as machine-readable JSON instead of terminal output.
+
+This is an advisory audit, not a build gate — `--pub` does not run it, and there is no `--fail-under` flag (may be added later). Composite scores are heuristic, not calibrated probabilities; use `--threshold` to tune sensitivity per manuscript.
 
 ### `lumina lit` — literature & bibliography
 
@@ -138,6 +146,12 @@ formats:                            # formats built by default
   - zip
 runner:      host                   # host | docker
 tools-image: lumina-tools:latest    # used when runner: docker
+
+text:
+  detect:
+    threshold: 60                   # lumina text detect default --threshold
+    ignore_phrases:                 # stock/hedge phrases exempted from scoring
+      - "in conclusion"
 ```
 
 ### Runner: host vs. Docker
