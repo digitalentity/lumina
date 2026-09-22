@@ -81,13 +81,7 @@ RUN mkdir -p /styles \
     && chmod -R 755 /styles \
     && rm /tmp/vale.ini
 
-
-# Set HOME to match the runtime value passed by dockerCmd (-e HOME=/tmp) so that
-# @pspdfkit/pdf-to-markdown caches its native binary to the same path at build
-# time that the wrapper script will look for it at runtime.
-ENV HOME=/tmp
-
 # Pre-install global npm packages to speed up formatting and mermaid rendering
-RUN npm install -g prettier @mermaid-js/mermaid-cli@11.16.0 @pspdfkit/pdf-to-markdown
+RUN npm install -g prettier @mermaid-js/mermaid-cli@11.16.0
 
 WORKDIR /workspace

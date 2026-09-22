@@ -14,17 +14,6 @@ type Config struct {
 	Formats    []string `yaml:"formats"`
 	Runner     string   `yaml:"runner"`
 	ToolsImage string   `yaml:"tools-image"`
-	AI         AIConfig `yaml:"ai"`
-}
-
-type AIConfig struct {
-	Provider        string  `yaml:"provider"`         // "gemini" or "openai"
-	Model           string  `yaml:"model"`            // model name
-	BaseURL         string  `yaml:"base-url"`         // optional custom api endpoint base url
-	Temperature     float64 `yaml:"temperature"`      // default: 0.2
-	SearchMethod    string  `yaml:"search-method"`     // "bm25" or "embeddings"
-	SearchThreshold float64 `yaml:"search-threshold"`  // default: 0.0 (no threshold cutoff)
-	EmbeddingModel  string  `yaml:"embedding-model"`   // model name for embeddings
 }
 
 // LuminaMetadata contains custom metadata processed by lumina itself.
@@ -43,14 +32,6 @@ func LoadConfig(root string) (Config, error) {
 		Formats:    []string{"pdf", "docx", "tex", "zip"},
 		Runner:     "host",
 		ToolsImage: "lumina-tools:latest",
-		AI: AIConfig{
-			Provider:        "gemini",
-			Model:           "gemini-2.5-flash",
-			Temperature:     0.2,
-			SearchMethod:    "bm25",
-			SearchThreshold: 0.0,
-			EmbeddingModel:  "gemini-embedding-2",
-		},
 	}
 
 	path := root + "/lumina.yaml"
@@ -84,25 +65,6 @@ func LoadConfig(root string) (Config, error) {
 	}
 	if cfg.ToolsImage == "" {
 		cfg.ToolsImage = defaultCfg.ToolsImage
-	}
-	if cfg.AI.Provider == "" {
-		cfg.AI.Provider = defaultCfg.AI.Provider
-	}
-	if cfg.AI.Model == "" {
-		cfg.AI.Model = defaultCfg.AI.Model
-	}
-	if cfg.AI.Temperature == 0.0 {
-		cfg.AI.Temperature = defaultCfg.AI.Temperature
-	}
-	if cfg.AI.SearchMethod == "" {
-		cfg.AI.SearchMethod = defaultCfg.AI.SearchMethod
-	}
-	if cfg.AI.EmbeddingModel == "" {
-		if cfg.AI.Provider == "openai" {
-			cfg.AI.EmbeddingModel = "text-embedding-3-small"
-		} else {
-			cfg.AI.EmbeddingModel = "gemini-embedding-2"
-		}
 	}
 
 	return cfg, nil
