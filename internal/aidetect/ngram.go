@@ -22,9 +22,9 @@ const embeddedModelPath = "assets/model.bin.gz"
 // (Brants et al., 2007) when an n-gram context or continuation is unseen.
 const backoffWeight = 0.4
 
-// unigramFloor is the probability assigned to a token never seen in
-// training (mapped to <unk> with zero unigram count), preventing log(0).
-const unigramFloor = 1e-10
+// fallbackUnigramFloor is used only when a model reports zero total unigram
+// mass (degenerate/empty model), where the Laplace floor below is undefined.
+const fallbackUnigramFloor = 1e-10
 
 // Model is the n-gram language model trained offline by tools/train-ngram
 // (see tools/train-ngram/README.md) and embedded into the binary at
@@ -125,6 +125,18 @@ func WriteModel(path string, model *Model) error {
 type PerplexityScorer struct {
 	model      *Model
 	vocabIndex map[string]uint32
+
+	// unkFloor is the probability assigned to a token never seen in
+	// training (mapped to <unk> with zero unigram count), preventing
+	// log(0). Laplace/add-one smoothed against the model's own scale
+	// (1/(TotalUnigram+|Vocab|)) rather than a fixed constant, so it stays
+	// in the same order of magnitude as the model's rarest known word
+	// instead of being many orders of magnitude smaller. A fixed floor far
+	// below any real word's probability makes every out-of-vocabulary
+	// token (any domain term the training corpus didn't cover) dominate a
+	// paragraph's average log-probability, inflating perplexity for
+	// genuinely human, jargon-heavy prose just as much as for AI prose.
+	unkFloor float64
 }
 
 // NewPerplexityScorer builds a scorer around a trained model.
@@ -133,7 +145,13 @@ func NewPerplexityScorer(model *Model) *PerplexityScorer {
 	for i, w := range model.Vocab {
 		idx[w] = uint32(i)
 	}
-	return &PerplexityScorer{model: model, vocabIndex: idx}
+
+	floor := fallbackUnigramFloor
+	if denom := model.TotalUnigram + uint64(len(model.Vocab)); denom > 0 {
+		floor = 1.0 / float64(denom)
+	}
+
+	return &PerplexityScorer{model: model, vocabIndex: idx, unkFloor: floor}
 }
 
 // Perplexity returns the model's perplexity over tokens: exp of the average
@@ -192,10 +210,10 @@ func continuationProbability(cc *ContextCounts, next uint32) (float64, bool) {
 
 func (s *PerplexityScorer) unigramProbability(idx uint32) float64 {
 	if s.model.TotalUnigram == 0 || idx >= uint32(len(s.model.Unigram)) {
-		return unigramFloor
+		return s.unkFloor
 	}
 	if p := float64(s.model.Unigram[idx]) / float64(s.model.TotalUnigram); p > 0 {
 		return p
 	}
-	return unigramFloor
+	return s.unkFloor
 }

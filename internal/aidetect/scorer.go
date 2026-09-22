@@ -61,11 +61,19 @@ const (
 	// below perplexityLow the paragraph is maximally suspicious (its
 	// tokens are highly predictable against the embedded modern-academic-
 	// prose model); at or above perplexityHigh it is not suspicious at
-	// all. Calibrated empirically against the embedded model: unseen,
-	// genuinely human academic prose lands around 400-500, while dense
-	// LLM stock phrasing lands around 150-250.
-	perplexityLow  = 50.0
-	perplexityHigh = 500.0
+	// all. Calibrated empirically against the embedded model (trained on
+	// full arXiv paper prose, not just abstracts — see
+	// tools/train-ngram/README.md): dense, generic LLM-stock-phrase
+	// filler lands around 75-165; plain, unadorned human sentences land
+	// in the 900s-3000s; human prose using domain vocabulary the training
+	// corpus doesn't cover (proper nouns, product names, CVE identifiers)
+	// routinely lands in the thousands regardless of authorship. The high
+	// bound is set conservatively above that domain-vocabulary range:
+	// perplexity alone should not flag jargon-heavy technical writing,
+	// even at the cost of also not catching sophisticated domain-aware
+	// AI text — that's what the other five signals are for.
+	perplexityLow  = 75.0
+	perplexityHigh = 3000.0
 
 	// burstinessAI/burstinessHuman bound the coefficient of variation of
 	// sentence word-length: human academic prose commonly falls in
