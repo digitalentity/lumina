@@ -21,5 +21,6 @@
 
 | # | Feature | Status | Created | Updated | Spec |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| 008 | AI-Generated Text Detector | 📝 PROPOSAL | 2026-09-22 | 2026-09-22 | [spec.md](008_ai_detector/spec.md) |
 
 

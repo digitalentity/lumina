@@ -81,14 +81,34 @@ func LoadFrom(projectRoot, target string) (*Manuscript, error) {
 
 	var templateDir string
 	if strings.TrimSpace(meta.Template) != "" {
-		tDir := filepath.Join(root, "templates", strings.TrimSpace(meta.Template))
-		if _, err := os.Stat(tDir); err != nil {
-			if os.IsNotExist(err) {
-				return nil, fmt.Errorf("template %q not found: %s does not exist", meta.Template, tDir)
-			}
-			return nil, err
+		tName := strings.TrimSpace(meta.Template)
+		candidates := []string{
+			filepath.Join(targetDir, tName),
+			filepath.Join(targetDir, "templates", tName),
+			filepath.Join(root, "templates", tName),
 		}
-		templateDir = tDir
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+				templateDir = c
+				break
+			}
+		}
+		if templateDir == "" {
+			return nil, fmt.Errorf("template %q not found in target or project templates", meta.Template)
+		}
+	} else {
+		candidates := []string{
+			filepath.Join(targetDir, "templates"),
+			filepath.Join(targetDir, "publish"),
+			filepath.Join(root, "templates", target),
+			filepath.Join(root, "templates", "default"),
+		}
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+				templateDir = c
+				break
+			}
+		}
 	}
 
 	run := runner.New(cfg, root)
@@ -136,6 +156,15 @@ func (m *Manuscript) BuildPath(ext string) string {
 // RelSource returns the relative path from ProjectRoot to manuscript.md.
 func (m *Manuscript) RelSource() string {
 	return filepath.Join("src", m.Target, "manuscript.md")
+}
+
+// RelPath returns path p relative to ProjectRoot, or p if relative calculation fails.
+func (m *Manuscript) RelPath(p string) string {
+	rel, err := filepath.Rel(m.Root, p)
+	if err != nil {
+		return p
+	}
+	return rel
 }
 
 // StylesPath parses the .vale.ini file to determine the configured StylesPath.

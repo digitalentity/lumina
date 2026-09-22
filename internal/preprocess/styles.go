@@ -11,7 +11,7 @@ import (
 )
 
 // styleExtensions lists LaTeX support-file extensions staged from templates/<name>/.
-var styleExtensions = []string{".sty", ".cls", ".bst"}
+var styleExtensions = []string{".sty", ".cls", ".bst", ".bbx", ".cbx", ".dbx", ".def", ".cfg", ".png", ".jpg", ".jpeg", ".eps", ".pdf"}
 
 // templateFileName is the custom pandoc template staged from templates/<name>/.
 const templateFileName = "template.tex"

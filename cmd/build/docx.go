@@ -41,6 +41,6 @@ func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
 		return err
 	}
 
-	logx.Success("DOCX created: %s", ms.BuildPath("docx"))
+	logx.Success("DOCX created: %s", ms.RelPath(ms.BuildPath("docx")))
 	return nil
 }

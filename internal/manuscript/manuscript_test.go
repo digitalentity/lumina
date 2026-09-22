@@ -133,4 +133,45 @@ template: "custom-tmpl"
 			t.Fatalf("expected error for missing template, got nil")
 		}
 	})
+
+	t.Run("per-target publish directory resolves as template", func(t *testing.T) {
+		targetDir := filepath.Join(tempDir, "src", "paper4")
+		publishDir := filepath.Join(targetDir, "publish")
+		if err := os.MkdirAll(publishDir, 0755); err != nil {
+			t.Fatalf("failed to create publish dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(targetDir, "manuscript.md"), []byte("# Paper 4"), 0644); err != nil {
+			t.Fatalf("failed to write manuscript: %v", err)
+		}
+
+		ms, err := Load("paper4")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if ms.TemplateDir != publishDir {
+			t.Errorf("expected template dir %s, got %s", publishDir, ms.TemplateDir)
+		}
+	})
+
+	t.Run("per-target custom template directory resolves", func(t *testing.T) {
+		targetDir := filepath.Join(tempDir, "src", "paper5")
+		targetTmplDir := filepath.Join(targetDir, "my-template")
+		if err := os.MkdirAll(targetTmplDir, 0755); err != nil {
+			t.Fatalf("failed to create template dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(targetDir, "manuscript.md"), []byte("# Paper 5"), 0644); err != nil {
+			t.Fatalf("failed to write manuscript: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(targetDir, "metadata.yaml"), []byte("template: my-template\n"), 0644); err != nil {
+			t.Fatalf("failed to write metadata: %v", err)
+		}
+
+		ms, err := Load("paper5")
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if ms.TemplateDir != targetTmplDir {
+			t.Errorf("expected template dir %s, got %s", targetTmplDir, ms.TemplateDir)
+		}
+	})
 }

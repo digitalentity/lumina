@@ -73,7 +73,7 @@ func BuildZIP(ms *manuscript.Manuscript, force bool) error {
 		return err
 	}
 
-	logx.Success("ZIP submission archive created: %s", zipOut)
+	logx.Success("ZIP submission archive created: %s", ms.RelPath(zipOut))
 	return nil
 }
 

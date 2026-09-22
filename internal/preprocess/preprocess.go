@@ -119,7 +119,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 			}
 			cslFilename := filepath.Base(cslPath)
 			destPath := filepath.Join(ms.LuminaBuildDir(), cslFilename)
-			logx.Info("Copying CSL style sheet %s to %s...", srcPath, destPath)
+			logx.Info("Copying CSL style sheet %s to %s...", ms.RelPath(srcPath), ms.RelPath(destPath))
 			if err := copyFile(srcPath, destPath); err != nil {
 				return fmt.Errorf("failed to copy CSL stylesheet: %w", err)
 			}
@@ -141,7 +141,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 				}
 				bibFilename := filepath.Base(v)
 				destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
-				logx.Info("Copying bibliography %s to %s...", srcPath, destPath)
+				logx.Info("Copying bibliography %s to %s...", ms.RelPath(srcPath), ms.RelPath(destPath))
 				if err := copyFile(srcPath, destPath); err != nil && !os.IsNotExist(err) {
 					return fmt.Errorf("failed to copy bibliography: %w", err)
 				}
@@ -161,7 +161,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 					}
 					bibFilename := filepath.Base(str)
 					destPath := filepath.Join(ms.LuminaBuildDir(), bibFilename)
-					logx.Info("Copying bibliography %s to %s...", srcPath, destPath)
+					logx.Info("Copying bibliography %s to %s...", ms.RelPath(srcPath), ms.RelPath(destPath))
 					if err := copyFile(srcPath, destPath); err != nil && !os.IsNotExist(err) {
 						return fmt.Errorf("failed to copy bibliography: %w", err)
 					}
@@ -212,7 +212,7 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return err
 	}
 
-	logx.Success("preprocessed manuscript written to %s", ms.IntermediateSource())
+	logx.Success("preprocessed manuscript written to %s", ms.RelPath(ms.IntermediateSource()))
 	return nil
 }
 

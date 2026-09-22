@@ -39,6 +39,6 @@ func BuildTeX(ms *manuscript.Manuscript, force bool) error {
 		return err
 	}
 
-	logx.Success("TeX source created: %s", ms.BuildPath("tex"))
+	logx.Success("TeX source created: %s", ms.RelPath(ms.BuildPath("tex")))
 	return nil
 }

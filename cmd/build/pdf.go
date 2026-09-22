@@ -44,6 +44,6 @@ func BuildPDF(ms *manuscript.Manuscript, engineOverride string, force bool) erro
 		return err
 	}
 
-	logx.Success("PDF created: %s", ms.BuildPath("pdf"))
+	logx.Success("PDF created: %s", ms.RelPath(ms.BuildPath("pdf")))
 	return nil
 }

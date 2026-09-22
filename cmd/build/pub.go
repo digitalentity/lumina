@@ -130,8 +130,8 @@ func BuildPub(ms *manuscript.Manuscript, force bool) error {
 	}
 
 	logx.Success("release artifacts created:")
-	logx.Info("%s", pdfDated)
-	logx.Info("%s", zipDated)
+	logx.Info("%s", ms.RelPath(pdfDated))
+	logx.Info("%s", ms.RelPath(zipDated))
 
 	return nil
 }
