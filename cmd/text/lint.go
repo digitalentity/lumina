@@ -1,13 +1,11 @@
 package text
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/spf13/cobra"
 	"lumina/internal/logx"
 	"lumina/internal/manuscript"
 	"lumina/internal/pandoc"
+	"lumina/internal/preprocess"
 )
 
 var lintCmd = &cobra.Command{
@@ -27,41 +25,8 @@ configuration and styles from .vale.ini in the project root.`,
 			return err
 		}
 
-		// Run 'vale sync' if styles/ or default style packages are absent
-		stylesDir := ms.StylesPath()
-		writeGoodDir := filepath.Join(stylesDir, "write-good")
-		proselintDir := filepath.Join(stylesDir, "proselint")
-
-		stylesAbsent := false
-		if _, err := os.Stat(stylesDir); os.IsNotExist(err) {
-			stylesAbsent = true
-		} else if _, err := os.Stat(writeGoodDir); os.IsNotExist(err) {
-			stylesAbsent = true
-		} else if _, err := os.Stat(proselintDir); os.IsNotExist(err) {
-			stylesAbsent = true
-		}
-
-		if stylesAbsent {
-			logx.Step("styles directory or default packages absent, running 'vale sync'...")
-			if err := ms.Runner.Run("vale", []string{"sync"}, ms.Root); err != nil {
-				copied := false
-				if ms.Config.Runner == "docker" {
-					logx.Warn("vale sync failed: %v. Attempting to copy pre-installed styles from docker image...", err)
-					relStylesDir, err := filepath.Rel(ms.Root, stylesDir)
-					if err != nil {
-						relStylesDir = "styles"
-					}
-					if mkdirErr := ms.Runner.Run("mkdir", []string{"-p", relStylesDir}, ms.Root); mkdirErr == nil {
-						if cpErr := ms.Runner.Run("cp", []string{"-r", "/styles/.", relStylesDir + "/"}, ms.Root); cpErr == nil {
-							logx.Success("successfully copied pre-installed styles")
-							copied = true
-						}
-					}
-				}
-				if !copied {
-					return err
-				}
-			}
+		if err := preprocess.EnsureValeStyles(ms); err != nil {
+			return err
 		}
 
 		logx.Step("linting manuscript prose...")

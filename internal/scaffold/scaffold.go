@@ -28,7 +28,11 @@ func Init(projectRoot, target string) error {
 	root := filepath.Clean(projectRoot)
 
 	// 1. Scaffold project-level structure
-	projDirs := []string{"csl", filepath.Join("templates", "default")}
+	projDirs := []string{
+		"csl",
+		filepath.Join("templates", "default"),
+		filepath.Join("vocab", "Default"),
+	}
 	for _, d := range projDirs {
 		dirPath := filepath.Join(root, d)
 		if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -47,6 +51,8 @@ func Init(projectRoot, target string) error {
 		{"lumina.yaml", "templates/lumina.yaml.tmpl"},
 		{".gitignore", "templates/gitignore.tmpl"},
 		{".vale.ini", "templates/vale.ini.tmpl"},
+		{filepath.Join("vocab", "Default", "accept.txt"), "templates/accept.txt.tmpl"},
+		{filepath.Join("vocab", "Default", "reject.txt"), "templates/reject.txt.tmpl"},
 	}
 	for _, f := range projFiles {
 		content, err := templatesFS.ReadFile(f.templateName)

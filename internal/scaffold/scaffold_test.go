@@ -34,6 +34,9 @@ func TestInit(t *testing.T) {
 			".vale.ini",
 			"csl/.gitkeep",
 			"templates/default/.gitkeep",
+			"vocab/Default/.gitkeep",
+			"vocab/Default/accept.txt",
+			"vocab/Default/reject.txt",
 		}
 		for _, f := range expectedProjectFiles {
 			path := filepath.Join(tempDir, f)

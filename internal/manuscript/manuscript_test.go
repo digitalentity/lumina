@@ -174,4 +174,33 @@ template: "custom-tmpl"
 			t.Errorf("expected template dir %s, got %s", targetTmplDir, ms.TemplateDir)
 		}
 	})
+
+	t.Run("StylesPath and Vocabs parsing", func(t *testing.T) {
+		valeIniPath := filepath.Join(tempDir, ".vale.ini")
+		valeContent := `
+StylesPath = .lumina/styles
+Vocab = Default, Medical
+
+[*]
+BasedOnStyles = Vale
+`
+		if err := os.WriteFile(valeIniPath, []byte(valeContent), 0644); err != nil {
+			t.Fatalf("failed to write .vale.ini: %v", err)
+		}
+
+		ms, err := Load("paper1")
+		if err != nil {
+			t.Fatalf("Load failed: %v", err)
+		}
+
+		expectedStyles := filepath.Join(tempDir, ".lumina", "styles")
+		if ms.StylesPath() != expectedStyles {
+			t.Errorf("expected StylesPath %s, got %s", expectedStyles, ms.StylesPath())
+		}
+
+		vocabs := ms.Vocabs()
+		if len(vocabs) != 2 || vocabs[0] != "Default" || vocabs[1] != "Medical" {
+			t.Errorf("expected [Default Medical], got %v", vocabs)
+		}
+	})
 }

@@ -214,3 +214,50 @@ func (m *Manuscript) StylesPath() string {
 
 	return defaultPath
 }
+
+// Vocabs parses the .vale.ini file to determine configured Vocab names.
+// Returns a slice of vocabulary names, or nil if none configured.
+func (m *Manuscript) Vocabs() []string {
+	var configPath string
+	if _, err := os.Stat(filepath.Join(m.Root, ".vale.ini")); err == nil {
+		configPath = filepath.Join(m.Root, ".vale.ini")
+	} else if _, err := os.Stat(filepath.Join(m.Root, "vale.ini")); err == nil {
+		configPath = filepath.Join(m.Root, "vale.ini")
+	} else {
+		return nil
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if idx := strings.Index(line, "="); idx != -1 {
+			key := strings.TrimSpace(line[:idx])
+			if strings.EqualFold(key, "Vocab") {
+				val := strings.TrimSpace(line[idx+1:])
+				val = strings.Trim(val, `"'`)
+				if val == "" {
+					return nil
+				}
+				parts := strings.Split(val, ",")
+				var res []string
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					if p != "" {
+						res = append(res, p)
+					}
+				}
+				return res
+			}
+		}
+	}
+
+	return nil
+}
