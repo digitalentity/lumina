@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	"lumina/internal/logx"
@@ -212,14 +213,40 @@ func Run(ms *manuscript.Manuscript, opts Options) error {
 		return err
 	}
 
+	// 10. Record current target in .lumina/build/.target
+	targetMarker := filepath.Join(buildDir, ".target")
+	if err := os.WriteFile(targetMarker, []byte(ms.Target+"\n"), 0644); err != nil {
+		return fmt.Errorf("failed to write target marker: %w", err)
+	}
+
 	logx.Success("preprocessed manuscript written to %s", ms.RelPath(ms.IntermediateSource()))
 	return nil
 }
 
-// IsStale reports whether .lumina/build/manuscript.md needs to be regenerated.
+// IsStale reports whether .lumina/build needs to be regenerated.
 func IsStale(ms *manuscript.Manuscript) (bool, error) {
+	// Check if the staged intermediate files belong to another target
+	targetMarker := filepath.Join(ms.LuminaBuildDir(), ".target")
+	data, err := os.ReadFile(targetMarker)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	if strings.TrimSpace(string(data)) != ms.Target {
+		return true, nil
+	}
+
 	destStat, err := os.Stat(ms.IntermediateSource())
 	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, err
+	}
+
+	if _, err := os.Stat(ms.IntermediateMeta()); err != nil {
 		if os.IsNotExist(err) {
 			return true, nil
 		}
@@ -250,6 +277,60 @@ func IsStale(ms *manuscript.Manuscript) (bool, error) {
 	if err == nil {
 		if bibStat.ModTime().After(destTime) {
 			return true, nil
+		}
+	}
+
+	// Check custom bibliography files if configured
+	if bibVal, ok := ms.RawMeta["bibliography"]; ok {
+		checkBib := func(p string) bool {
+			if p == "" {
+				return false
+			}
+			srcPath := p
+			if !filepath.IsAbs(p) {
+				if _, err := os.Stat(filepath.Join(ms.TargetDir, p)); err == nil {
+					srcPath = filepath.Join(ms.TargetDir, p)
+				} else {
+					srcPath = filepath.Join(ms.Root, p)
+				}
+			}
+			if s, err := os.Stat(srcPath); err == nil && s.ModTime().After(destTime) {
+				return true
+			}
+			return false
+		}
+		switch v := bibVal.(type) {
+		case string:
+			if checkBib(v) {
+				return true, nil
+			}
+		case []any:
+			for _, item := range v {
+				if s, ok := item.(string); ok && checkBib(s) {
+					return true, nil
+				}
+			}
+		}
+	}
+
+	// Check CSL file if configured
+	if cslVal, ok := ms.RawMeta["csl"]; ok {
+		if cslPath, ok := cslVal.(string); ok && cslPath != "" {
+			srcPath := cslPath
+			if !filepath.IsAbs(cslPath) {
+				if _, err := os.Stat(filepath.Join(ms.TargetDir, cslPath)); err == nil {
+					srcPath = filepath.Join(ms.TargetDir, cslPath)
+				} else if _, err := os.Stat(filepath.Join(ms.CSLDir, cslPath)); err == nil {
+					srcPath = filepath.Join(ms.CSLDir, cslPath)
+				} else {
+					srcPath = filepath.Join(ms.Root, cslPath)
+				}
+			}
+			if cslStat, err := os.Stat(srcPath); err == nil {
+				if cslStat.ModTime().After(destTime) {
+					return true, nil
+				}
+			}
 		}
 	}
 

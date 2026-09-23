@@ -252,3 +252,119 @@ func TestPreprocessAssemblesCSLAndBibliography(t *testing.T) {
 		t.Errorf("expected metadata.yaml to contain local bibliography filename, got: %s", metaStr)
 	}
 }
+
+func TestMultiTargetIntermediateStaging(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "lumina-multi-target-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	target1Dir := filepath.Join(tempDir, "src", "paper1")
+	target2Dir := filepath.Join(tempDir, "src", "paper2")
+	_ = os.MkdirAll(target1Dir, 0755)
+	_ = os.MkdirAll(target2Dir, 0755)
+
+	m1Path := filepath.Join(target1Dir, "manuscript.md")
+	m2Path := filepath.Join(target2Dir, "manuscript.md")
+	meta1Path := filepath.Join(target1Dir, "metadata.yaml")
+	meta2Path := filepath.Join(target2Dir, "metadata.yaml")
+
+	_ = os.WriteFile(m1Path, []byte("# Paper 1 Content"), 0644)
+	_ = os.WriteFile(meta1Path, []byte("title: Paper One"), 0644)
+	_ = os.WriteFile(m2Path, []byte("# Paper 2 Content"), 0644)
+	_ = os.WriteFile(meta2Path, []byte("title: Paper Two"), 0644)
+
+	ms1 := &manuscript.Manuscript{
+		Root:        tempDir,
+		ProjectRoot: tempDir,
+		Target:      "paper1",
+		TargetDir:   target1Dir,
+		Source:      m1Path,
+		BibPath:     filepath.Join(target1Dir, "references.bib"),
+		FiguresDir:  filepath.Join(target1Dir, "figures"),
+		LuminaDir:   filepath.Join(tempDir, ".lumina"),
+		BuildDir:    filepath.Join(tempDir, "build"),
+		Stem:        "paper1",
+		Config:      config.Config{},
+		Runner:      &MockRunner{},
+	}
+
+	ms2 := &manuscript.Manuscript{
+		Root:        tempDir,
+		ProjectRoot: tempDir,
+		Target:      "paper2",
+		TargetDir:   target2Dir,
+		Source:      m2Path,
+		BibPath:     filepath.Join(target2Dir, "references.bib"),
+		FiguresDir:  filepath.Join(target2Dir, "figures"),
+		LuminaDir:   filepath.Join(tempDir, ".lumina"),
+		BuildDir:    filepath.Join(tempDir, "build"),
+		Stem:        "paper2",
+		Config:      config.Config{},
+		Runner:      &MockRunner{},
+	}
+
+	// 1. Preprocess paper1
+	if err := Run(ms1, Options{}); err != nil {
+		t.Fatalf("preprocess paper1 failed: %v", err)
+	}
+
+	content1, err := os.ReadFile(ms1.IntermediateSource())
+	if err != nil {
+		t.Fatalf("failed to read intermediate source: %v", err)
+	}
+	if !bytes.Contains(content1, []byte("Paper 1 Content")) {
+		t.Errorf("expected Paper 1 Content in intermediate source, got: %s", string(content1))
+	}
+
+	// 2. IsStale for paper2 must be true even if m2Path is older than .lumina/build/manuscript.md
+	stale2, err := IsStale(ms2)
+	if err != nil {
+		t.Fatalf("IsStale paper2 failed: %v", err)
+	}
+	if !stale2 {
+		t.Errorf("expected paper2 to be stale after paper1 was staged")
+	}
+
+	// 3. Preprocess paper2
+	if err := Run(ms2, Options{}); err != nil {
+		t.Fatalf("preprocess paper2 failed: %v", err)
+	}
+
+	content2, err := os.ReadFile(ms2.IntermediateSource())
+	if err != nil {
+		t.Fatalf("failed to read intermediate source: %v", err)
+	}
+	if !bytes.Contains(content2, []byte("Paper 2 Content")) {
+		t.Errorf("expected Paper 2 Content in intermediate source, got: %s", string(content2))
+	}
+
+	// 4. IsStale for paper2 should now be false
+	stale2, err = IsStale(ms2)
+	if err != nil {
+		t.Fatalf("IsStale paper2 failed: %v", err)
+	}
+	if stale2 {
+		t.Errorf("expected paper2 not to be stale right after staging")
+	}
+
+	// 5. IsStale for paper1 should now be true
+	stale1, err := IsStale(ms1)
+	if err != nil {
+		t.Fatalf("IsStale paper1 failed: %v", err)
+	}
+	if !stale1 {
+		t.Errorf("expected paper1 to be stale after paper2 was staged")
+	}
+
+	// 6. Removing intermediate metadata makes it stale
+	_ = os.Remove(ms2.IntermediateMeta())
+	stale2, err = IsStale(ms2)
+	if err != nil {
+		t.Fatalf("IsStale paper2 failed after meta removal: %v", err)
+	}
+	if !stale2 {
+		t.Errorf("expected paper2 to be stale after removing intermediate metadata")
+	}
+}
