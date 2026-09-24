@@ -1,0 +1,40 @@
+# Manuscript Evolution: {{ .Title }}
+
+**Target:** {{ .Target }} | **File:** `{{ .ManuscriptPath }}`{{ if .BibPath }} | **Bibliography:** `{{ .BibPath }}`{{ end }}
+
+**Revisions:** {{ .TotalCommits }} | **Words Added:** +{{ .TotalWordsAdded }} | **Words Removed:** -{{ .TotalWordsDeleted }} | **Total Time:** {{ .TotalTimeString }}
+
+{{ if .Revisions }}**Revisions:** {{ range $i, $rev := .Revisions }}{{ if $i }} &bull; {{ end }}[{{ add $i 1 }}](#commit-{{ $rev.ShortHash }} "Commit {{ $rev.ShortHash }}: {{ escapeQuote $rev.Subject }}"){{ end }}
+
+{{ end }}---
+
+{{ range $i, $rev := .Revisions }}<a id="commit-{{ $rev.ShortHash }}"></a>
+## #{{ add $i 1 }} Commit `{{ $rev.ShortHash }}` &mdash; {{ formatDate $rev.Date }}
+
+**Author:** {{ $rev.Author }} | **Delta:** `{{ deltaSign $rev.NetWords }}{{ $rev.NetWords }} words`
+
+> **{{ $rev.Subject }}**
+{{ if $rev.Body }}>
+> {{ quoteBody $rev.Body }}
+{{ end }}
+{{ range $rev.Diffs }}{{ if ne .Type 0 }}{{ if eq .Type 1 }}**[+ Added Paragraph]**
+
+{{ .CurrentText }}
+
+{{ else if eq .Type 2 }}**[- Removed Paragraph]**
+
+~~{{ .OriginalText }}~~
+
+{{ else if eq .Type 3 }}**[~ Modified Paragraph]**
+
+{{ range .Spans }}{{ if eq .Type 1 }}**{{ .Text }}**{{ else if eq .Type 2 }}~~{{ .Text }}~~{{ else }}{{ .Text }}{{ end }}{{ end }}
+
+{{ end }}{{ end }}{{ end }}{{ if $rev.Citations }}**Bibliography Changes:**
+
+{{ range $rev.Citations }}{{ if eq .Type 0 }}* **[+ Citation Added: `@{{ .Key }}`]** {{ .Formatted }}
+{{ else if eq .Type 1 }}* **[- Citation Removed: `@{{ .Key }}`]** ~~{{ .Formatted }}~~
+{{ else if eq .Type 2 }}* **[~ Citation Updated: `@{{ .Key }}`]** {{ .Formatted }}
+{{ end }}{{ end }}
+{{ end }}---
+
+{{ end }}

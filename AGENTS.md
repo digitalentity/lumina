@@ -26,9 +26,12 @@ Single package/test: `go test ./internal/citations/... -run TestName -v`
 
 - `main.go` → `cmd.Execute()`. Cobra command tree: `cmd/root.go` wires
   subcommands `cmd/build`, `cmd/lit`, `cmd/text`, plus
-  top-level `cmd/init.go`, `cmd/clean.go`.
+  top-level `cmd/log.go`, `cmd/init.go`, `cmd/clean.go`.
 - Commands operate on targets: `lumina build <target> [--pdf|--docx|--tex|...]`,
+  `lumina log <target> [--terminal|--stat|--pdf]`,
   `lumina lit check <target>`, `lumina text words <target>`.
+- `internal/changelog`: extracts pure Go Git history (`go-git/v5`) for `src/<target>/manuscript.md`
+  and renders paragraph-level colored diffs with `<del>` / `<ins>` in HTML, terminal ANSI, and PDF.
 - `internal/manuscript`: loads target via `manuscript.Load(target)`. Discovers project
   root (searching for `lumina.yaml` or `src/`), requires `src/<target>/manuscript.md`,
   resolves project-level assets (`csl/`, `templates/<template>/`, `build/`),

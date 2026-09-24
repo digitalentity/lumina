@@ -59,7 +59,27 @@ All commands are run from the project root.
 | Command | Description |
 |---------|-------------|
 | `lumina init <target>` | Scaffold project root files (if absent) and a new target under `src/<target>/`. Never overwrites. |
+| `lumina log <target>` | Analyze Git prose and bibliography history of `src/<target>/` and generate paragraph-level evolution changelog (HTML, Markdown, PDF, or terminal). |
 | `lumina clean` | Remove `.lumina/` and `build/`. Leaves targets and project config untouched. |
+
+### `lumina log` — manuscript revision evolution
+
+| Command | Description |
+|---------|-------------|
+| `lumina log <target>` | Generates a visual HTML evolution log (`build/<output>-changelog.html`) showing paragraph revisions with red strikethrough (`<del>`), green additions (`<ins>`), sticky quick-link navigation bar, and formatted citation changes. |
+| `lumina log <target> --markdown` (or `--md` / `-m`) | Export changelog to Markdown format (`build/<output>-changelog.md`) with revision navigation links. |
+| `lumina log <target> --terminal` (or `-t`) | Print colorized ANSI diff directly to terminal stdout. |
+| `lumina log <target> --stat` | Display commit summary statistics table (+words, -words, commit message). |
+| `lumina log <target> --pdf` | Compile changelog to PDF format (`build/<output>-changelog.pdf`). |
+
+Flags:
+* `-o, --output PATH`: Custom output file path (default `build/<stem>-changelog.html`).
+* `-m, --markdown`, `--md`: Export changelog to Markdown format (`build/<stem>-changelog.md`).
+* `-t, --terminal`: Display colored diff in terminal stdout (or markdown when combined with `--markdown`).
+* `--stat`: Display commit summary statistics without paragraph diffs.
+* `--pdf`: Export changelog to PDF format via Pandoc.
+* `--since DATE`: Filter commits by date or Git revision range.
+* `-n, --max-count N`: Limit to the last N revisions.
 
 ### `lumina build` — compilation
 

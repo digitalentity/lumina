@@ -23,6 +23,7 @@ templates/, .vale.ini) is shared across all targets.
 Use 'lumina init <target>' to scaffold a new manuscript target.`,
 	Example: `  lumina init paper1
   lumina build paper1 --pdf
+  lumina log paper1
   lumina lit check paper1
   lumina text words paper1`,
 	SilenceErrors: true,
@@ -58,10 +59,12 @@ func init() {
 	})
 
 	build.BuildCmd.GroupID = "manuscript"
+	LogCmd.GroupID = "manuscript"
 	lit.LitCmd.GroupID = "manuscript"
 	text.TextCmd.GroupID = "manuscript"
 
 	rootCmd.AddCommand(build.BuildCmd)
+	rootCmd.AddCommand(LogCmd)
 	rootCmd.AddCommand(lit.LitCmd)
 	rootCmd.AddCommand(text.TextCmd)
 

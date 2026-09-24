@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evolution Log: {{ .Title }}</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --border-accent: #cbd5e1;
+      --add-bg: #dcfce7;
+      --add-text: #166534;
+      --add-border: #86efac;
+      --del-bg: #fee2e2;
+      --del-text: #991b1b;
+      --del-border: #fca5a5;
+      --mod-border: #3b82f6;
+      --badge-bg: #f1f5f9;
+      --badge-text: #334155;
+      --primary: #0284c7;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card-bg: #1e293b;
+        --text: #f1f5f9;
+        --text-muted: #94a3b8;
+        --border: #334155;
+        --border-accent: #475569;
+        --add-bg: #064e3b;
+        --add-text: #86efac;
+        --add-border: #059669;
+        --del-bg: #7f1d1d;
+        --del-text: #fca5a5;
+        --del-border: #dc2626;
+        --mod-border: #60a5fa;
+        --badge-bg: #334155;
+        --badge-text: #cbd5e1;
+        --primary: #38bdf8;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    header {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    header h1 {
+      font-size: 1.875rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+    header .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+    .stat-card {
+      background: var(--badge-bg);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+    }
+    .stat-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+    }
+    .stat-val {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+    .stat-add { color: var(--add-text); }
+    .stat-del { color: var(--del-text); }
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .commit-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      scroll-margin-top: 5rem;
+      transition: box-shadow 0.3s ease;
+    }
+    .commit-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0,0,0,0.01);
+    }
+    .commit-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .badge-num {
+      background: var(--primary);
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+    }
+    .badge-hash {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.8rem;
+      background: var(--badge-bg);
+      color: var(--primary);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .badge-author {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .badge-date {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .delta-badge {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-left: auto;
+    }
+    .delta-pos { background: var(--add-bg); color: var(--add-text); }
+    .delta-neg { background: var(--del-bg); color: var(--del-text); }
+    .commit-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .commit-body {
+      margin-top: 0.5rem;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+    }
+    .diff-list {
+      display: flex;
+      flex-direction: column;
+    }
+    .diff-item {
+      padding: 0.85rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+    .diff-added {
+      background: var(--card-bg);
+      border-left: 4px solid var(--add-border);
+    }
+    .diff-deleted {
+      background: var(--del-bg);
+      border-left: 4px solid var(--del-border);
+    }
+    .diff-modified {
+      background: var(--card-bg);
+      border-left: 4px solid var(--mod-border);
+    }
+    .diff-content {
+      margin-top: 0.35rem;
+    }
+    .diff-content p {
+      margin: 0.35rem 0;
+    }
+    .diff-content p:first-child {
+      margin-top: 0;
+    }
+    .diff-content p:last-child {
+      margin-bottom: 0;
+    }
+    .diff-content h1, .diff-content h2, .diff-content h3,
+    .diff-content h4, .diff-content h5, .diff-content h6 {
+      margin: 0.4rem 0 0.25rem 0;
+      line-height: 1.3;
+    }
+    .diff-content code {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.88em;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+    }
+    .diff-content pre {
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 0.75rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 0.5rem 0;
+    }
+    .diff-content pre code {
+      background: transparent;
+      padding: 0;
+      color: inherit;
+    }
+    .diff-content blockquote {
+      border-left: 3px solid var(--border-accent);
+      margin: 0.5rem 0;
+      padding-left: 0.75rem;
+      color: var(--text-muted);
+    }
+    .diff-content ul, .diff-content ol {
+      margin: 0.35rem 0;
+      padding-left: 1.5rem;
+    }
+    .diff-deleted .diff-content,
+    .diff-deleted .diff-content p,
+    .diff-deleted .diff-content h1,
+    .diff-deleted .diff-content h2,
+    .diff-deleted .diff-content h3,
+    .diff-deleted .diff-content h4,
+    .diff-deleted .diff-content h5,
+    .diff-deleted .diff-content h6,
+    .diff-deleted .diff-content li {
+      text-decoration: line-through;
+      color: var(--del-text);
+    }
+    del {
+      background-color: var(--del-bg);
+      color: var(--del-text);
+      text-decoration: line-through;
+      padding: 0.1em 0.25em;
+      border-radius: 3px;
+    }
+    ins {
+      background-color: var(--add-bg);
+      color: var(--add-text);
+      text-decoration: none;
+      font-weight: 500;
+      padding: 0.1em 0.25em;
+      border-radius: 3px;
+    }
+    .diff-label {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      margin-bottom: 0.5rem;
+    }
+    .diff-label-add { background: var(--add-border); color: var(--add-text); }
+    .diff-label-del { background: var(--del-border); color: var(--del-text); }
+    .diff-label-mod { background: var(--border-accent); color: var(--text); }
+    .citations-section {
+      padding: 1.25rem 1.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .citations-header {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+    .citations-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .citation-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+    .citation-added { border-left: 4px solid var(--add-border); }
+    .citation-deleted { border-left: 4px solid var(--del-border); opacity: 0.85; }
+    .citation-modified { border-left: 4px solid var(--mod-border); }
+    .citation-key {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-weight: 600;
+      color: var(--primary);
+      margin-left: 0.5rem;
+      font-size: 0.82rem;
+    }
+    .citation-text {
+      margin-top: 0.35rem;
+      color: var(--text);
+    }
+    html {
+      scroll-behavior: smooth;
+    }
+    .nav-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      position: sticky;
+      top: 1rem;
+      z-index: 100;
+    }
+    .nav-title {
+      font-weight: 700;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .page-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.1rem;
+      height: 2.1rem;
+      padding: 0 0.5rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+    .page-link:hover, .page-link.active {
+      border-color: var(--primary);
+      background: var(--primary);
+      color: #ffffff;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
+    }
+    @keyframes pulseCard {
+      0% {
+        box-shadow: 0 0 0 4px var(--primary);
+      }
+      50% {
+        box-shadow: 0 0 0 4px var(--primary);
+      }
+      100% {
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+    }
+    .card-highlight {
+      animation: pulseCard 1.4s ease-out;
+    }
+    @media print {
+      body { background: white; color: black; padding: 0; }
+      header { box-shadow: none; border: 1px solid #ccc; page-break-after: avoid; }
+      .nav-bar { display: none; }
+      .commit-card { box-shadow: none; border: 1px solid #ddd; page-break-inside: avoid; margin-bottom: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>{{ .Title }}</h1>
+      <div class="subtitle">Target: <strong>{{ .Target }}</strong></div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Revisions</div>
+          <div class="stat-val">{{ .TotalCommits }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Words Added</div>
+          <div class="stat-val stat-add">+{{ .TotalWordsAdded }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Words Removed</div>
+          <div class="stat-val stat-del">-{{ .TotalWordsDeleted }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Time</div>
+          <div class="stat-val">{{ .TotalTimeString }}</div>
+        </div>
+      </div>
+    </header>
+
+    {{ if .Revisions }}
+    <nav class="nav-bar" aria-label="Revisions Navigation">
+      <span class="nav-title">Revisions:</span>
+      <div class="pagination">
+        {{- range $i, $rev := .Revisions }}
+        <a href="#rev-{{ $rev.ShortHash }}" class="page-link" data-rev="{{ add $i 1 }}" title="Commit {{ $rev.ShortHash }}: {{ $rev.Subject }}">{{ add $i 1 }}</a>
+        {{- end }}
+      </div>
+    </nav>
+    {{ end }}
+
+    <div class="timeline">
+      {{ range $i, $rev := .Revisions }}
+      <div class="commit-card" id="rev-{{ $rev.ShortHash }}" data-rev="{{ add $i 1 }}">
+        <a id="rev-{{ add $i 1 }}"></a>
+        <div class="commit-header">
+          <div class="commit-meta">
+            <span class="badge-num">#{{ add $i 1 }}</span>
+            <span class="badge-hash">{{ .ShortHash }}</span>
+            <span class="badge-author">{{ .Author }}</span>
+            <span class="badge-date">{{ formatDate .Date }}</span>
+            <span class="delta-badge {{ if lt .NetWords 0 }}delta-neg{{ else }}delta-pos{{ end }}">
+              {{- if ge .NetWords 0 }}+{{ end }}{{ .NetWords }} words
+            </span>
+          </div>
+          <div class="commit-title">{{ .Subject }}</div>
+          {{ if .Body }}
+          <div class="commit-body">{{ .Body }}</div>
+          {{ end }}
+        </div>
+        {{ if .Diffs }}
+        <div class="diff-list">
+          {{ range .Diffs }}
+            {{ if ne .Type 0 }}
+              {{ if eq .Type 1 }}
+              <div class="diff-item diff-added">
+                <span class="diff-label diff-label-add">Added Paragraph</span>
+                <div class="diff-content">{{ renderDiff . }}</div>
+              </div>
+              {{ else if eq .Type 2 }}
+              <div class="diff-item diff-deleted">
+                <span class="diff-label diff-label-del">Removed Paragraph</span>
+                <div class="diff-content">{{ renderDiff . }}</div>
+              </div>
+              {{ else if eq .Type 3 }}
+              <div class="diff-item diff-modified">
+                <span class="diff-label diff-label-mod">Modified Paragraph</span>
+                <div class="diff-content">{{ renderDiff . }}</div>
+              </div>
+              {{ end }}
+            {{ end }}
+          {{ end }}
+        </div>
+        {{ end }}
+        {{ if .Citations }}
+        <div class="citations-section">
+          <div class="citations-header">Bibliography Changes</div>
+          <div class="citations-list">
+            {{ range .Citations }}
+              {{ if eq .Type 0 }}
+              <div class="citation-item citation-added">
+                <span class="diff-label diff-label-add">+ Citation Added</span>
+                <span class="citation-key">@{{ .Key }}</span>
+                <div class="citation-text">{{ .Formatted }}</div>
+              </div>
+              {{ else if eq .Type 1 }}
+              <div class="citation-item citation-deleted">
+                <span class="diff-label diff-label-del">- Citation Removed</span>
+                <span class="citation-key">@{{ .Key }}</span>
+                <div class="citation-text">{{ .Formatted }}</div>
+              </div>
+              {{ else if eq .Type 2 }}
+              <div class="citation-item citation-modified">
+                <span class="diff-label diff-label-mod">~ Citation Updated</span>
+                <span class="citation-key">@{{ .Key }}</span>
+                <div class="citation-text">{{ .Formatted }}</div>
+              </div>
+              {{ end }}
+            {{ end }}
+          </div>
+        </div>
+        {{ end }}
+      </div>
+      {{ end }}
+    </div>
+  </div>
+  <script>
+    (function() {
+      function getTargetElement(id) {
+        if (!id) return null;
+        var el = document.getElementById(id);
+        if (el) return el;
+        var num = id.replace(/^rev-/, '');
+        return document.querySelector('[data-rev="' + num + '"]');
+      }
+
+      function scrollToTarget(target, updateHash, href) {
+        if (!target) return;
+        var navBar = document.querySelector('.nav-bar');
+        var navHeight = navBar ? navBar.getBoundingClientRect().height + 20 : 80;
+        var targetTop = target.getBoundingClientRect().top + window.pageYOffset - navHeight;
+
+        window.scrollTo({
+          top: Math.max(0, targetTop),
+          behavior: 'smooth'
+        });
+
+        target.classList.remove('card-highlight');
+        void target.offsetWidth;
+        target.classList.add('card-highlight');
+
+        if (updateHash && href && window.history && window.history.pushState) {
+          window.history.pushState(null, '', href);
+        }
+      }
+
+      document.querySelectorAll('.page-link').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+          e.preventDefault();
+          var href = link.getAttribute('href');
+          if (!href || !href.startsWith('#')) return;
+          var targetId = href.substring(1);
+          var target = getTargetElement(targetId);
+          scrollToTarget(target, true, href);
+
+          document.querySelectorAll('.page-link').forEach(function(l) { l.classList.remove('active'); });
+          link.classList.add('active');
+        });
+      });
+
+      var cards = document.querySelectorAll('.commit-card');
+      var pageLinks = document.querySelectorAll('.page-link');
+
+      function updateActiveOnScroll() {
+        var navBar = document.querySelector('.nav-bar');
+        var navHeight = navBar ? navBar.getBoundingClientRect().height + 40 : 100;
+        var currentId = '';
+
+        cards.forEach(function(card) {
+          var rect = card.getBoundingClientRect();
+          if (rect.top <= navHeight) {
+            currentId = card.id;
+          }
+        });
+
+        if (!currentId && cards.length > 0) {
+          currentId = cards[0].id;
+        }
+
+        pageLinks.forEach(function(link) {
+          if (link.getAttribute('href') === '#' + currentId) {
+            link.classList.add('active');
+          } else {
+            link.classList.remove('active');
+          }
+        });
+      }
+
+      window.addEventListener('scroll', updateActiveOnScroll, { passive: true });
+      updateActiveOnScroll();
+
+      if (window.location.hash) {
+        var initialTarget = getTargetElement(window.location.hash.substring(1));
+        if (initialTarget) {
+          setTimeout(function() {
+            scrollToTarget(initialTarget, false, null);
+          }, 100);
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

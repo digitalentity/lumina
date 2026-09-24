@@ -1,0 +1,29 @@
+{{ bold }}{{ cyan }}Manuscript Evolution:{{ reset }} {{ bold }}{{ .Title }}{{ reset }} (target: {{ .Target }})
+{{ faint }}Revisions: {{ .TotalCommits }} | Total Added: +{{ .TotalWordsAdded }} words | Total Removed: -{{ .TotalWordsDeleted }} words | Total Time: {{ .TotalTimeString }}{{ reset }}
+
+{{ range .Revisions }}{{ yellow }}commit {{ .ShortHash }}{{ reset }} {{ cyan }}by {{ .Author }}{{ reset }} {{ faint }}({{ formatDate .Date }}){{ reset }} {{ deltaBadge .NetWords }}
+  {{ bold }}{{ .Subject }}{{ reset }}
+{{ if .Body }}{{ range bodyLines .Body }}  {{ faint }}{{ . }}{{ reset }}
+{{ end }}{{ end }}
+{{ range .Diffs }}{{ if ne .Type 0 }}{{ if eq .Type 1 }}  {{ boldGreen }}[+ Added]{{ reset }}
+  {{ green }}{{ indent .CurrentText "    " }}{{ reset }}
+
+{{ else if eq .Type 2 }}  {{ strikeRed }}[- Removed]{{ reset }}
+  {{ strikeRed }}{{ indent .OriginalText "    " }}{{ reset }}
+
+{{ else if eq .Type 3 }}  {{ yellow }}[~ Modified]{{ reset }}
+    {{ renderTerminalSpans .Spans }}
+
+{{ end }}{{ end }}{{ end }}{{ if .Citations }}  {{ bold }}Bibliography Changes:{{ reset }}
+{{ range .Citations }}{{ if eq .Type 0 }}    {{ boldGreen }}[+ Citation Added]{{ reset }} {{ cyan }}@{{ .Key }}{{ reset }}
+      {{ green }}{{ .Formatted }}{{ reset }}
+
+{{ else if eq .Type 1 }}    {{ strikeRed }}[- Citation Removed]{{ reset }} {{ cyan }}@{{ .Key }}{{ reset }}
+      {{ strikeRed }}{{ .Formatted }}{{ reset }}
+
+{{ else if eq .Type 2 }}    {{ yellow }}[~ Citation Updated]{{ reset }} {{ cyan }}@{{ .Key }}{{ reset }}
+      {{ .Formatted }}
+
+{{ end }}{{ end }}{{ end }}  {{ faint }}{{ divider }}{{ reset }}
+
+{{ end }}

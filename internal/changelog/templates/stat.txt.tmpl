@@ -1,0 +1,4 @@
+COMMIT    DATE              AUTHOR                +WORDS    -WORDS    NET       SUBJECT
+──────────────────────────────────────────────────────────────────────────────────────────
+{{ range .Revisions }}{{ yellow }}{{ padRight .ShortHash 8 }}{{ reset }}  {{ formatDate .Date }}  {{ padRight (truncate .Author 18) 20 }}  {{ green }}+{{ padRight (printf "%d" .WordsAdded) 7 }}{{ reset }}  {{ red }}-{{ padRight (printf "%d" .WordsDeleted) 7 }}{{ reset }}  {{ padRight (printf "%d" .NetWords) 8 }}  {{ truncate .Subject 40 }}
+{{ end }}

@@ -187,3 +187,33 @@ func TestCleanCmdArgs(t *testing.T) {
 		t.Fatal("expected error when running clean with extra arguments, got nil")
 	}
 }
+
+func TestLogCmdHelp(t *testing.T) {
+	cmd := RootCmd()
+	buf := new(bytes.Buffer)
+	cmd.SetOut(buf)
+	cmd.SetErr(buf)
+	cmd.SetArgs([]string{"log", "--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error running log --help: %v", err)
+	}
+
+	out := buf.String()
+	expectedSubstrings := []string{
+		"lumina log <target> [flags]",
+		"-o, --output",
+		"--pdf",
+		"-t, --terminal",
+		"--stat",
+		"--since",
+		"-n, --max-count",
+	}
+
+	for _, s := range expectedSubstrings {
+		if !strings.Contains(out, s) {
+			t.Errorf("expected log help to contain %q, but got:\n%s", s, out)
+		}
+	}
+}
+
