@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -368,3 +369,35 @@ func TestMultiTargetIntermediateStaging(t *testing.T) {
 		t.Errorf("expected paper2 to be stale after removing intermediate metadata")
 	}
 }
+
+func TestFindMermaidBlocks_NewlineIsolation(t *testing.T) {
+	content := []byte(`::: {#fig:diagram}
+` + "```" + `mermaid
+flowchart LR
+    A --> B
+` + "```" + `
+Caption line immediately below code block.
+:::
+`)
+	replacements, mmds := FindMermaidBlocks(content, "/tmp/figures")
+	if len(replacements) != 1 || len(mmds) != 1 {
+		t.Fatalf("expected 1 replacement and 1 mmd to render, got %d and %d", len(replacements), len(mmds))
+	}
+
+	var out bytes.Buffer
+	r := replacements[0]
+	out.Write(content[:r.start])
+	out.WriteString(r.text)
+	out.Write(content[r.end:])
+
+	result := out.String()
+	expectedSub := "\n\n![Mermaid Diagram](figures/mermaid-"
+	if !strings.Contains(result, expectedSub) {
+		t.Errorf("expected blank line before image, got:\n%s", result)
+	}
+	expectedAfter := ")\n\nCaption line immediately below code block."
+	if !strings.Contains(result, expectedAfter) {
+		t.Errorf("expected blank line after image, got:\n%s", result)
+	}
+}
+

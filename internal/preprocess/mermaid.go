@@ -73,7 +73,7 @@ func FindMermaidBlocks(content []byte, figuresDir string) ([]replacement, []mmdT
 					replacements = append(replacements, replacement{
 						start: blkStart,
 						end:   blkEnd,
-						text:  fmt.Sprintf("![Mermaid Diagram](figures/%s)", pngFilename),
+						text:  fmt.Sprintf("\n![Mermaid Diagram](figures/%s)\n", pngFilename),
 					})
 
 					mmdsToRender = append(mmdsToRender, mmdToRender{
