@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"lumina/internal/citations"
@@ -47,11 +46,10 @@ func BuildPub(ms *manuscript.Manuscript, force bool) error {
 
 	// 3. Word limit check
 	if err := pandoc.CheckPresent(ms.Runner, "pandoc"); err == nil {
-		outBytes, err := ms.Runner.Capture("pandoc", []string{ms.RelSource(), "--to=plain", "--quiet"}, ms.Root)
+		wordsCount, err := pandoc.CountWords(ms)
 		if err != nil {
 			return fmt.Errorf("failed to compute word count via pandoc: %w", err)
 		}
-		wordsCount := len(strings.Fields(string(outBytes)))
 		if ms.Meta.WordLimit > 0 && wordsCount > ms.Meta.WordLimit {
 			return fmt.Errorf("gate 3 failed: word limit exceeded (%d / %d words)", wordsCount, ms.Meta.WordLimit)
 		}

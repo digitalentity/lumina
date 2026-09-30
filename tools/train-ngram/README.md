@@ -1,7 +1,7 @@
 # train-ngram
 
 Offline trainer for the n-gram language model used by `internal/aidetect`'s
-perplexity scorer (see `spec/008_ai_detector/spec.md`). This tool is
+perplexity scorer (see `spec/008_text_detect/spec.md`). This tool is
 standalone: it is never imported by the `lumina` binary, and it never runs as
 part of `make build` or `make test`. Run it by hand when the corpus or
 training parameters change, and commit the resulting model asset.

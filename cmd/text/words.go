@@ -1,7 +1,6 @@
 package text
 
 import (
-	"strings"
 
 	"github.com/spf13/cobra"
 	"lumina/internal/logx"
@@ -24,16 +23,11 @@ the word count against the limit and warns if exceeded.`,
 			return err
 		}
 
-		if err := pandoc.CheckPresent(ms.Runner, "pandoc"); err != nil {
-			return err
-		}
-
-		outBytes, err := ms.Runner.Capture("pandoc", []string{ms.RelSource(), "--to=plain", "--quiet"}, ms.Root)
+		wordsCount, err := pandoc.CountWords(ms)
 		if err != nil {
 			return err
 		}
 
-		wordsCount := len(strings.Fields(string(outBytes)))
 		switch {
 		case ms.Meta.WordLimit > 0 && wordsCount > ms.Meta.WordLimit:
 			logx.Warn("word count: %d / %d (limit exceeded!)", wordsCount, ms.Meta.WordLimit)

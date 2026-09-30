@@ -17,9 +17,8 @@ var (
 )
 
 var detectCmd = &cobra.Command{
-	Use:     "detect <target>",
-	Aliases: []string{"ai"},
-	Short:   "Check manuscript prose for statistical signals of AI-generated text",
+	Use:   "detect <target>",
+	Short: "Check manuscript prose for statistical signals of AI-generated text",
 	Long: `Score manuscript paragraphs for statistical signals of machine-generated prose:
 n-gram perplexity, sentence-length burstiness, lexical diversity,
 stock-phrase/hedge-word density, and em-dash overuse.
@@ -29,8 +28,7 @@ This is an advisory audit, not a blocking build gate.`,
 	Example: `  lumina text detect paper1
   lumina text detect paper1 --detail
   lumina text detect paper1 --threshold 75
-  lumina text detect paper1 --json
-  lumina text ai paper1 -d`,
+  lumina text detect paper1 --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ms, err := manuscript.Load(args[0])

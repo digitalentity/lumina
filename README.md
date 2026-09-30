@@ -4,7 +4,7 @@
 [![Build Status](https://img.shields.io/badge/tests-passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
-Lumina is a standalone, deterministic CLI for academic writing pipelines. It orchestrates Markdown-based manuscript authoring across multiple targets, providing automated diagram compilation, citation verification, bibliography pruning, prose linting, statistical AI text detection, Git revision evolution tracking, and multi-format publication builds (PDF, DOCX, LaTeX, submission ZIP).
+Lumina is a standalone, deterministic CLI for academic writing pipelines. It orchestrates Markdown-based manuscript authoring across multiple targets, providing automated diagram compilation, citation verification, bibliography pruning, prose linting, Git revision evolution tracking, and multi-format publication builds (PDF, DOCX, LaTeX, submission ZIP).
 
 ---
 
@@ -26,7 +26,6 @@ Lumina is a standalone, deterministic CLI for academic writing pipelines. It orc
       - [Pre-submission Publication Gate (`--pub`)](#pre-submission-publication-gate---pub)
     - [`lumina log`](#lumina-log)
     - [`lumina text`](#lumina-text)
-      - [Prose Quality & AI Detection Engine](#prose-quality--ai-detection-engine)
     - [`lumina lit`](#lumina-lit)
 - [Configuration Reference](#configuration-reference)
   - [`lumina.yaml` (Project Level)](#luminayaml-project-level)
@@ -50,7 +49,6 @@ Lumina provides a single, unified interface for research projects:
 - **Multi-Target Isolation**: Maintain papers, conference submissions, rebuttal letters, and thesis chapters in one project while sharing templates, CSL citation stylesheets, and vocabulary dictionaries.
 - **Multi-Format Generation**: Compile publication-grade PDFs via XeLaTeX or LuaLaTeX, structured Word documents (`.docx`), standalone standalone LaTeX source trees (`.tex`), and camera-ready submission archives (`.zip`).
 - **Enforced Integrity Gates (`--pub`)**: Hard pre-submission validation preventing broken `@citations`, unexpanded TODO notes, style guide violations, and word cap overflows.
-- **Offline AI Prose Detection**: 100% local, deterministic heuristics (n-gram perplexity, sentence burstiness, lexical density, stock phrasing) auditing manuscripts without sending research to third-party cloud APIs.
 - **Git Prose Evolution Tracking**: Extract paragraph-level revision diffs, calculated writing duration, and citation alterations directly from repository history into standalone HTML, Markdown, PDF, or terminal ANSI reports.
 - **Dual Execution Engine**: Run natively against local host binaries or completely containerized through an isolated Docker toolchain image.
 
@@ -144,7 +142,6 @@ This creates the project-level scaffolding (`lumina.yaml`, `.vale.ini`, `csl/`, 
 ```sh
 lumina lit check paper1      # Verify all @cite keys exist in references.bib
 lumina text words paper1     # Check prose word count against configured limits
-lumina text detect paper1    # Audit prose for machine-generation statistical markers
 ```
 
 ### 4. Compile Target Artifacts
@@ -313,31 +310,6 @@ Formats `src/<target>/manuscript.md` in-place using Prettier for clean, consiste
 ##### `lumina text lint <target>`
 Lints prose style against `.vale.ini` rules, automatically syncing custom vocabularies from `vocab/` and `src/<target>/`.
 
-##### `lumina text detect <target>` (Alias: `ai`)
-Audits manuscript prose for statistical signatures of automated language model generation. Runs completely offline with no network connections or telemetry.
-
-```sh
-lumina text detect <target> [flags]
-```
-
-**Flags:**
-
-| Flag | Description |
-| :--- | :--- |
-| `-t, --threshold <N>` | Minimum composite suspicion score (0–100) to flag a paragraph (default: `60`). |
-| `-d, --detail` | Display individual metric breakdowns for flagged paragraphs. |
-| `-j, --json` | Emit complete analysis report as machine-readable JSON. |
-
-##### Prose Quality & AI Detection Engine
-
-The detector isolates prose paragraphs using Goldmark AST analysis (stripping math formulas, code blocks, raw HTML, tables, and citation keys) and evaluates:
-
-- **Perplexity / Predictability**: Low token cross-entropy against an embedded n-gram model trained on pre-2024 academic writing.
-- **Sentence Burstiness**: Variance of sentence lengths. Uniform sentence lengths signal automated text; high variance indicates human drafting.
-- **Lexical Diversity**: Type-Token Ratio (TTR) measuring vocabulary repetition.
-- **Stock-Phrase Density**: Pattern matching against characteristic LLM stock phrases (*"delve"*, *"testament"*, *"pivotal"*, *"furthermore"*, *"crucial role"*).
-- **Hedging & Punctuation**: Overuse of em-dashes and soft hedging markers (*"it is worth noting"*, *"generally speaking"*).
-
 ---
 
 #### `lumina lit`
@@ -383,14 +355,6 @@ formats:
 # Toolchain execution mode: host (local PATH) or docker (isolated container)
 runner: host                         # Options: host | docker
 tools-image: lumina-tools:latest     # Used when runner is 'docker'
-
-# Configuration for prose auditing tools
-text:
-  detect:
-    threshold: 60                    # Default suspicion threshold (0-100)
-    ignore_phrases:                  # Phrases exempted from stock-phrase penalties
-      - "in conclusion"
-      - "it should be noted that"
 ```
 
 ### Environment Variables (`.env`)
@@ -529,9 +493,6 @@ make image      # Build the Docker container tools image (lumina-tools:latest)
 ```sh
 # Test citation integrity verification
 go test -v ./internal/citations/...
-
-# Test offline AI detection scoring engine
-go test -v ./internal/aidetect/... -run TestScorer
 
 # Test Git changelog diff extraction
 go test -v ./internal/changelog/...

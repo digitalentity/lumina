@@ -1,10 +1,10 @@
-# SDD Spec: AI-Generated Text Detector
+# SDD Spec: Statistical Prose Detector
 
 ## Metadata
 * **Status:** `IMPLEMENTED`
 * **Author:** Konstantin Sharlaimov
 * **Created:** 2026-09-22
-* **Last Updated:** 2026-09-22
+* **Last Updated:** 2026-09-30
 * **Approver:** Konstantin Sharlaimov
 
 ---
@@ -24,7 +24,7 @@ Lumina currently checks citations (`lit check`), prose rules (`text lint`), and 
 
 ### 1.2 Proposed Solution
 
-Introduce `lumina text detect <target>` (with alias `lumina text ai <target>`). The command analyzes manuscript prose locally and delivers direct, honest feedback: an AI probability score (0–100%) per paragraph and across the entire manuscript, flagging high-probability machine-generated sections.
+Introduce `lumina text detect <target>`. The command analyzes manuscript prose locally and delivers direct, honest feedback: an AI probability score (0–100%) per paragraph and across the entire manuscript, flagging high-probability machine-generated sections.
 
 Detection relies on deterministic statistical signal without external network calls or heavy neural runtimes:
 
@@ -51,7 +51,7 @@ Each paragraph receives an honest composite AI probability score. Sections excee
     corpus's source is documented in `tools/train-ngram/README.md`; the
     trained output is committed as `internal/aidetect/assets/model.bin.gz`,
     regenerable on demand but not regenerated at build or run time.
-  * New CLI command `lumina text detect <target>` (and alias `lumina text ai <target>`).
+  * New CLI command `lumina text detect <target>`.
   * CLI flags:
     * `--threshold <int>`: Minimum suspicion score to flag (default: 60).
     * `--detail`: Print sub-score breakdown (burstiness, perplexity, stock phrase count).
@@ -111,7 +111,7 @@ offline, by hand, to produce the `model.bin.gz` asset that `F2` loads at
 2. **`internal/aidetect/tokenizer.go`**: Splits paragraph into words and sentences. Recognizes common academic abbreviations to ensure accurate boundary detection.
 3. **`internal/aidetect/ngram.go`**: Evaluates word sequence probabilities against an embedded pruned n-gram frequency trie loaded from `internal/aidetect/assets/model.bin.gz`.
 4. **`internal/aidetect/scorer.go`**: Computes standard deviation of sentence lengths (burstiness), vocabulary richness, stock-phrase frequency, em-dash density, and hedge-phrase density, returning a normalized 0–100 AI probability score.
-5. **`cmd/text/detect.go`**: Registers `detect` and `ai` subcommands under `lumina text`. Handles CLI flags, terminal rendering via `internal/logx`, and JSON serialization.
+5. **`cmd/text/detect.go`**: Registers `detect` subcommand under `lumina text`. Handles CLI flags, terminal rendering via `internal/logx`, and JSON serialization.
 6. **`tools/train-ngram/main.go`** *(build-time only, never imported by `lumina`)*: standalone
    Go program that reads a source corpus, builds a pruned n-gram frequency
    table, and writes the compressed `model.bin.gz` consumed by component 3.
@@ -166,7 +166,6 @@ type Detector interface {
 ### 2.3 Protocol / API Changes
 
 * **New Command**: `lumina text detect <target>`
-* **Command Alias**: `lumina text ai <target>`
 * **Flags**:
   * `-t, --threshold <int>`: Flagging threshold (default: `60`).
   * `-d, --detail`: Output detailed metric breakdowns per flagged paragraph.
@@ -234,12 +233,12 @@ type Detector interface {
 
 - [x] **Task 6: CLI Command Wiring**
   - **Files:** `cmd/text/detect.go`, `cmd/text/text.go`
-  - Register `detect` and alias `ai`. Connect target resolution, config
+  - Register `detect`. Connect target resolution, config
     threshold/ignore-phrases, and formatting (standard, `--detail`, `--json`).
   - **Verification:** `go build ./... && ./_build/lumina text detect --help`
 
 - [x] **Task 7: Documentation & End-to-End Validation**
-  - **Files:** `README.md`, `spec/008_ai_detector/spec.md`
+  - **Files:** `README.md`, `spec/008_text_detect/spec.md`
   - Document command, flags, and config keys in the CLI reference. Validate
     against real test manuscripts.
   - **Verification:** `make test && make vet`

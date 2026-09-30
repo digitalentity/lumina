@@ -165,7 +165,6 @@ func TestTextDetectHelp(t *testing.T) {
 		"-t, --threshold",
 		"-d, --detail",
 		"-j, --json",
-		"ai",
 	}
 
 	for _, s := range expectedSubstrings {
