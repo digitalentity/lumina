@@ -456,6 +456,12 @@ pagebreak-before: ["Appendix*", "References"]
 * The key has no effect on PDF output; page breaks there come from the
   LaTeX template.
 
+### DOCX Section Numbering
+
+Pandoc's DOCX writer ignores `numbersections` in metadata, so Lumina passes
+`--number-sections` for DOCX builds when `numbersections: true`. Headings
+marked `{-}` (e.g. `# References {-}`) stay unnumbered in both outputs.
+
 ### Vale & Vocabulary Management
 
 Lumina orchestrates Vale prose linting using `.vale.ini` in the project root:

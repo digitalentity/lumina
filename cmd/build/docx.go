@@ -28,13 +28,9 @@ func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
 		return err
 	}
 
-	flags := []string{"--citeproc"}
-	breaksFilter, err := pageBreaksFilter(ms)
+	flags, err := docxFlags(ms)
 	if err != nil {
 		return err
-	}
-	if breaksFilter != "" {
-		flags = append(flags, "--lua-filter", breaksFilter)
 	}
 
 	if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
@@ -58,6 +54,25 @@ func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
 
 	logx.Success("DOCX created: %s", ms.RelPath(ms.BuildPath("docx")))
 	return nil
+}
+
+// docxFlags returns the pandoc flags for DOCX output. Unlike the LaTeX
+// template, the DOCX writer ignores numbersections in metadata and numbers
+// headings only with --number-sections.
+func docxFlags(ms *manuscript.Manuscript) ([]string, error) {
+	flags := []string{"--citeproc"}
+	if number, _ := ms.RawMeta["numbersections"].(bool); number {
+		flags = append(flags, "--number-sections")
+	}
+
+	breaksFilter, err := pageBreaksFilter(ms)
+	if err != nil {
+		return nil, err
+	}
+	if breaksFilter != "" {
+		flags = append(flags, "--lua-filter", breaksFilter)
+	}
+	return flags, nil
 }
 
 // pageSetupReference applies papersize/geometry from the metadata to a copy

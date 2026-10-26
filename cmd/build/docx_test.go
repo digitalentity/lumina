@@ -184,3 +184,32 @@ func TestPageBreaksFilterInvalid(t *testing.T) {
 		t.Error("expected an error")
 	}
 }
+
+func TestDocxFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		meta map[string]any
+		want string
+	}{
+		{"defaults", map[string]any{}, "--citeproc"},
+		{"numbersections false", map[string]any{"numbersections": false}, "--citeproc"},
+		{"numbersections", map[string]any{"numbersections": true}, "--citeproc --number-sections"},
+		{
+			"numbersections and toc",
+			map[string]any{"numbersections": true, "toc": true},
+			"--citeproc --number-sections --lua-filter pagebreaks.lua",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ms, _ := newDocxTestManuscript(t, tt.meta)
+			flags, err := docxFlags(ms)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got := strings.Join(flags, " "); got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
