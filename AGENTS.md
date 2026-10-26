@@ -57,6 +57,9 @@ Single package/test: `go test ./internal/citations/... -run TestName -v`
   project root configuration (`lumina.yaml`, `csl/`, `templates/default/`, `.vale.ini`,
   `.gitignore`) if absent, plus target files in `src/<target>/`.
 - `internal/logx`: shared colorized logger used across all commands.
+- `internal/docx`: derives DOCX page setup from `papersize`/`geometry`
+  metadata and patches a copy of `reference.docx` (`cmd/build/docx.go`
+  stages it as `.lumina/build/reference.docx`).
 
 ## Design docs
 

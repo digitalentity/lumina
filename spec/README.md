@@ -9,6 +9,7 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 005 | Web UI | 🔷 DESIGN | 2026-07-09 | 2026-07-09 | [spec.md](005_web_ui/spec.md) |
 | 008 | Statistical Prose Detector | 🔨 IMPLEMENTED | 2026-09-22 | 2026-09-30 | [spec.md](008_text_detect/spec.md) |
+| 010 | DOCX Page Setup from Metadata | 🚧 IMPLEMENTING | 2026-10-26 | 2026-10-26 | [spec.md](010_docx_page_setup/spec.md) |
 
 ## Completed
 

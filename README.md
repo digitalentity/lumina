@@ -175,7 +175,7 @@ my-research/
 ├── templates/                      # LaTeX and Word templates
 │   └── default/
 │       ├── template.tex            # Pandoc LaTeX template
-│       ├── reference.docx          # Word style reference document
+│       ├── reference.docx          # Word style reference document (page setup comes from metadata)
 │       └── *.sty, *.cls, *.bst     # LaTeX style and class packages
 ├── vocab/                          # Project-wide Vale custom dictionaries
 │   └── Default/
@@ -401,6 +401,34 @@ numbersections: true
 link-citations: true
 geometry: "margin=1in"
 ```
+
+### Page Setup for PDF and DOCX
+
+`papersize` and `geometry` control the page for both outputs. Pandoc passes
+them to LaTeX for PDF. For DOCX, pandoc ignores them and takes the page
+setup from `reference.docx`, so Lumina copies the template's reference
+document to `.lumina/build/reference.docx`, applies the metadata to the
+copy and passes the copy to pandoc. The template file is never modified.
+
+```yaml
+papersize: letter
+geometry: "left=2cm,right=2cm,top=1.5cm,bottom=1.5cm"
+```
+
+* `papersize`: `a4`, `a5`, `b5`, `letter`, `legal`, `executive`
+  (case-insensitive; a `paper` suffix such as `a4paper` is accepted).
+* `geometry` (string or list) understands `margin`, `hmargin`, `vmargin`,
+  `left`/`lmargin`/`inner`, `right`/`rmargin`/`outer`, `top`/`tmargin`,
+  `bottom`/`bmargin`, `<name>paper`, `paper=`, `paperwidth`,
+  `paperheight`, `papersize={w,h}`, `landscape` and `portrait`. Units:
+  `pt`, `bp`, `pc`, `mm`, `cm`, `in`.
+* Options with no DOCX equivalent (e.g. `includefoot`, `headsep`) are
+  skipped with a warning. Malformed values and unsupported units fail the
+  build.
+* Values not set in metadata keep the reference document's own. Without a
+  template `reference.docx`, pandoc's default reference document is used.
+* Right-aligned tab stops of the `TOC1`–`TOC9` styles that sit on the old
+  right margin move to the new one.
 
 ### Vale & Vocabulary Management
 
