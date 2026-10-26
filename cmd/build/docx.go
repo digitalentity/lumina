@@ -28,6 +28,15 @@ func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
 		return err
 	}
 
+	flags := []string{"--citeproc"}
+	breaksFilter, err := pageBreaksFilter(ms)
+	if err != nil {
+		return err
+	}
+	if breaksFilter != "" {
+		flags = append(flags, "--lua-filter", breaksFilter)
+	}
+
 	if err := os.MkdirAll(ms.BuildDir, 0755); err != nil {
 		return err
 	}
@@ -37,7 +46,7 @@ func BuildDOCX(ms *manuscript.Manuscript, force bool) error {
 		MetadataFile: ms.IntermediateMeta(),
 		Output:       ms.BuildPath("docx"),
 		Filters:      []string{"pandoc-acro", "pandoc-crossref"},
-		ExtraFlags:   []string{"--citeproc"},
+		ExtraFlags:   flags,
 		ReferenceDoc: referenceDoc,
 	}
 
@@ -84,4 +93,27 @@ func pageSetupReference(ms *manuscript.Manuscript, referenceDoc string) (string,
 	}
 	logx.Info("Applied page setup from metadata to %s", ms.RelPath(dst))
 	return dst, nil
+}
+
+// pageBreaksFilter writes the page-break Lua filter for toc and
+// pagebreak-before into the build directory and returns its path relative
+// to it (pandoc runs there). Without page breaks it returns "".
+func pageBreaksFilter(ms *manuscript.Manuscript) (string, error) {
+	breaks, err := docx.PageBreaksFromMeta(ms.RawMeta)
+	if err != nil {
+		return "", fmt.Errorf("invalid page breaks in metadata.yaml: %w", err)
+	}
+	if breaks.IsZero() {
+		return "", nil
+	}
+
+	src, err := breaks.Filter()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(ms.LuminaBuildDir(), docx.PageBreakFilterName)
+	if err := os.WriteFile(path, []byte(src), 0644); err != nil {
+		return "", fmt.Errorf("failed to write page-break filter: %w", err)
+	}
+	return docx.PageBreakFilterName, nil
 }

@@ -1,10 +1,33 @@
 # metadata.yaml — manuscript metadata.
 title:          "Untitled Manuscript"
+# subtitle:     "Subtitle"
 author:         "Author Name"
 date:           "2026-09-22"
+# abstract:     "One-paragraph summary."
+# lang:         en-GB
 bibliography:   "references.bib"
-csl:            "ieee.csl"
+csl:            "ieee.csl"      # file name in csl/ or a path
+link-citations: true
 numbersections: true
+
+# Table of contents. With toc: true, DOCX output also starts the body on a
+# new page after the contents.
+# toc:          true
+# toc-depth:    2
+# toc-title:    "Contents"
+
+# Page layout for both PDF and DOCX output.
+# papersize:    a4              # a4, a5, b5, letter, legal, executive
+# geometry:     "margin=2.5cm"  # LaTeX geometry options
+# fontsize:     12pt            # PDF only
+# linestretch:  1.5             # PDF only
+
+# DOCX only: glob patterns for top-level headings that start a new page.
+# pagebreak-before: ["Appendix*", "References"]
+
+# pandoc-crossref reference prefixes.
+# figPrefix:    ["Figure", "Figures"]
+# tblPrefix:    ["Table", "Tables"]
 
 # lumina-specific, not forwarded to pandoc:
 template:   "default" # named folder in templates/

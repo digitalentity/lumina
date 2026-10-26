@@ -9,7 +9,6 @@
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | 005 | Web UI | 🔷 DESIGN | 2026-07-09 | 2026-07-09 | [spec.md](005_web_ui/spec.md) |
 | 008 | Statistical Prose Detector | 🔨 IMPLEMENTED | 2026-09-22 | 2026-09-30 | [spec.md](008_text_detect/spec.md) |
-| 010 | DOCX Page Setup from Metadata | 🚧 IMPLEMENTING | 2026-10-26 | 2026-10-26 | [spec.md](010_docx_page_setup/spec.md) |
 
 ## Completed
 
@@ -19,4 +18,6 @@
 | 006 | LaTeX Style (.sty) File Support | ✅ COMPLETED | 2026-07-15 | 2026-07-15 | [spec.md](006_latex_sty_support/spec.md) |
 | 007 | Multi-Target Projects | ✅ COMPLETED | 2026-09-22 | 2026-09-22 | [spec.md](007_multi_target_projects/spec.md) |
 | 009 | Manuscript Evolution Changelog | ✅ COMPLETED | 2026-09-23 | 2026-09-24 | [spec.md](009_manuscript_change_log/spec.md) |
+| 010 | DOCX Page Setup from Metadata | ✅ COMPLETED | 2026-10-26 | 2026-10-26 | [spec.md](010_docx_page_setup/spec.md) |
+| 011 | DOCX Page Breaks from Metadata | ✅ COMPLETED | 2026-10-26 | 2026-10-26 | [spec.md](011_docx_page_breaks/spec.md) |
 

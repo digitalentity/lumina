@@ -59,7 +59,9 @@ Single package/test: `go test ./internal/citations/... -run TestName -v`
 - `internal/logx`: shared colorized logger used across all commands.
 - `internal/docx`: derives DOCX page setup from `papersize`/`geometry`
   metadata and patches a copy of `reference.docx` (`cmd/build/docx.go`
-  stages it as `.lumina/build/reference.docx`).
+  stages it as `.lumina/build/reference.docx`). It also generates the
+  DOCX page-break Lua filter from `toc`/`pagebreak-before`
+  (`.lumina/build/pagebreaks.lua`).
 
 ## Design docs
 

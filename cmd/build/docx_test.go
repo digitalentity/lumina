@@ -148,3 +148,39 @@ func TestPageSetupReferenceInvalid(t *testing.T) {
 		t.Error("expected error for an unsupported paper size")
 	}
 }
+
+func TestPageBreaksFilterNone(t *testing.T) {
+	ms, _ := newDocxTestManuscript(t, map[string]any{"title": "x"})
+	got, err := pageBreaksFilter(ms)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected no filter, got %q", got)
+	}
+}
+
+func TestPageBreaksFilterWritten(t *testing.T) {
+	ms, _ := newDocxTestManuscript(t, map[string]any{"toc": true, "pagebreak-before": []any{"References"}})
+	got, err := pageBreaksFilter(ms)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "pagebreaks.lua" {
+		t.Errorf("expected a build-dir relative path, got %q", got)
+	}
+	src, err := os.ReadFile(filepath.Join(ms.LuminaBuildDir(), got))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), `"^References$"`) {
+		t.Errorf("filter lacks the pattern:\n%s", src)
+	}
+}
+
+func TestPageBreaksFilterInvalid(t *testing.T) {
+	ms, _ := newDocxTestManuscript(t, map[string]any{"pagebreak-before": 1})
+	if _, err := pageBreaksFilter(ms); err == nil {
+		t.Error("expected an error")
+	}
+}

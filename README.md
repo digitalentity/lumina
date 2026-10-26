@@ -399,8 +399,14 @@ bibliography: "references.bib"
 csl: "ieee.csl"
 numbersections: true
 link-citations: true
-geometry: "margin=1in"
+toc: true                            # DOCX: body starts on a new page
+papersize: letter                    # PDF and DOCX
+geometry: "margin=1in"               # PDF and DOCX
+pagebreak-before: ["Appendix*"]      # DOCX only
 ```
+
+`lumina init` writes every supported key into the new target's
+`metadata.yaml`, with optional keys commented out.
 
 ### Page Setup for PDF and DOCX
 
@@ -429,6 +435,26 @@ geometry: "left=2cm,right=2cm,top=1.5cm,bottom=1.5cm"
   template `reference.docx`, pandoc's default reference document is used.
 * Right-aligned tab stops of the `TOC1`–`TOC9` styles that sit on the old
   right margin move to the new one.
+
+### DOCX Page Breaks
+
+The DOCX writer has no equivalent of the LaTeX template's `\clearpage`.
+Lumina inserts page breaks into DOCX output through a generated Lua filter
+(`.lumina/build/pagebreaks.lua`):
+
+```yaml
+toc: true
+pagebreak-before: ["Appendix*", "References"]
+```
+
+* With `toc: true`, the body starts on a new page after the table of
+  contents.
+* `pagebreak-before` (string or list) holds case-sensitive glob patterns
+  matched against the full text of top-level (`#`) headings: `*` matches
+  any text, `?` one character, `\` escapes the next character. Headings
+  nested inside divs are not matched.
+* The key has no effect on PDF output; page breaks there come from the
+  LaTeX template.
 
 ### Vale & Vocabulary Management
 

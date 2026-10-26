@@ -2,7 +2,7 @@
 
 ## Metadata
 
-* **Status:** `IMPLEMENTING`
+* **Status:** `COMPLETED`
 * **Author:** Claude (agent), for Konstantin Sharlaimov
 * **Created:** 2026-10-26
 * **Last Updated:** 2026-10-26
@@ -183,7 +183,7 @@ reference document and page setup is requested.
 - [x] Unit tests pass.
 - [x] Build targets compile.
 - [x] Neighbor packages unaffected.
-- [ ] Approved by the User.
+- [x] Approved by the User.
 
 ---
 
@@ -207,8 +207,8 @@ reference document and page setup is requested.
 
 ## Phase 5: Completed
 
-- [ ] All Phase 4 items `[x]`.
-- [ ] No regressions.
-- [ ] Spec document reflects actual implementation.
-- [ ] `spec/README.md` updated to `COMPLETED`.
-- [ ] Approved by the User.
+- [x] All Phase 4 items `[x]`.
+- [x] No regressions.
+- [x] Spec document reflects actual implementation.
+- [x] `spec/README.md` updated to `COMPLETED`.
+- [x] Approved by the User.
