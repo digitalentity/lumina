@@ -456,6 +456,14 @@ pagebreak-before: ["Appendix*", "References"]
 * The key has no effect on PDF output; page breaks there come from the
   LaTeX template.
 
+### DOCX Authors
+
+Pandoc's DOCX writer renders only plain-text authors and drops entries
+written as maps (`name`, `affiliation`, ...). When `author` holds such
+entries, Lumina flattens each through a generated Lua filter
+(`.lumina/build/authors.lua`) into one line per field: name, affiliation,
+department, city and country, email. This mirrors the LaTeX title block.
+
 ### DOCX Section Numbering
 
 Pandoc's DOCX writer ignores `numbersections` in metadata, so Lumina passes

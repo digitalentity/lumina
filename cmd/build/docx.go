@@ -72,7 +72,29 @@ func docxFlags(ms *manuscript.Manuscript) ([]string, error) {
 	if breaksFilter != "" {
 		flags = append(flags, "--lua-filter", breaksFilter)
 	}
+
+	authorFilter, err := authorsFilter(ms)
+	if err != nil {
+		return nil, err
+	}
+	if authorFilter != "" {
+		flags = append(flags, "--lua-filter", authorFilter)
+	}
 	return flags, nil
+}
+
+// authorsFilter writes the author Lua filter into the build directory when
+// the metadata has structured authors and returns its path relative to it
+// (pandoc runs there). Otherwise it returns "".
+func authorsFilter(ms *manuscript.Manuscript) (string, error) {
+	if !docx.HasStructuredAuthors(ms.RawMeta) {
+		return "", nil
+	}
+	path := filepath.Join(ms.LuminaBuildDir(), docx.AuthorFilterName)
+	if err := os.WriteFile(path, []byte(docx.AuthorFilter), 0644); err != nil {
+		return "", fmt.Errorf("failed to write author filter: %w", err)
+	}
+	return docx.AuthorFilterName, nil
 }
 
 // pageSetupReference applies papersize/geometry from the metadata to a copy

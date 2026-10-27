@@ -185,6 +185,25 @@ func TestPageBreaksFilterInvalid(t *testing.T) {
 	}
 }
 
+func TestAuthorsFilter(t *testing.T) {
+	ms, _ := newDocxTestManuscript(t, map[string]any{"author": "Jane Doe"})
+	if got, err := authorsFilter(ms); err != nil || got != "" {
+		t.Errorf("plain author: got %q, %v; want no filter", got, err)
+	}
+
+	ms, _ = newDocxTestManuscript(t, map[string]any{"author": []any{map[string]any{"name": "Jane Doe"}}})
+	got, err := authorsFilter(ms)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "authors.lua" {
+		t.Errorf("expected a build-dir relative path, got %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(ms.LuminaBuildDir(), got)); err != nil {
+		t.Error(err)
+	}
+}
+
 func TestDocxFlags(t *testing.T) {
 	tests := []struct {
 		name string
@@ -194,6 +213,11 @@ func TestDocxFlags(t *testing.T) {
 		{"defaults", map[string]any{}, "--citeproc"},
 		{"numbersections false", map[string]any{"numbersections": false}, "--citeproc"},
 		{"numbersections", map[string]any{"numbersections": true}, "--citeproc --number-sections"},
+		{
+			"structured author",
+			map[string]any{"author": []any{map[string]any{"name": "Jane Doe"}}},
+			"--citeproc --lua-filter authors.lua",
+		},
 		{
 			"numbersections and toc",
 			map[string]any{"numbersections": true, "toc": true},
